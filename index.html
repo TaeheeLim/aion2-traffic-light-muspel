@@ -126,7 +126,7 @@
 </div>
 
 <!-- 공용 게임 로직 -->
-<script src="muspel-logic.js?v=6"></script>
+<script src="muspel-logic.js?v=7"></script>
 
 <!-- =================== RPG 3인칭 렌더 (Three.js) =================== -->
 <script type="module">
@@ -165,8 +165,8 @@ scene.add(new THREE.HemisphereLight(0xff7a2a, 0x1a0500, 0.55)); // 용암 빛(�
 const sun = new THREE.DirectionalLight(0xffd0a0, 0.9); sun.position.set(7,18,9); scene.add(sun);
 sun.castShadow = true;
 sun.shadow.mapSize.set(1024,1024); // 성능: 그림자맵 축소
-sun.shadow.camera.near=1; sun.shadow.camera.far=160;
-sun.shadow.camera.left=-64; sun.shadow.camera.right=64; sun.shadow.camera.top=64; sun.shadow.camera.bottom=-64;
+sun.shadow.camera.near=1; sun.shadow.camera.far=135;
+sun.shadow.camera.left=-52; sun.shadow.camera.right=52; sun.shadow.camera.top=52; sun.shadow.camera.bottom=-52;
 sun.shadow.bias=-0.0004; sun.shadow.normalBias=0.02;
 const bossLight = new THREE.PointLight(0xff7a18, 3.0, 24, 2); bossLight.position.set(0,3,0); scene.add(bossLight);
 

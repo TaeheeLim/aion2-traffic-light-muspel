@@ -16,7 +16,7 @@ window.MUSPEL = (function(){
   ];
 
   // ---- 월드 치수 (월드 유닛) ----
-  const ARENA_R = 30;
+  const ARENA_R = 45;
   const BOSS_R  = 1.6;
   const RING_R  = [BOSS_R+1.4, BOSS_R+0.9, BOSS_R+0.45]; // 바깥/중간/안쪽
   const ARRIVAL = BOSS_R+0.25;                            // 진입 판정 반지름
@@ -32,7 +32,7 @@ window.MUSPEL = (function(){
   const LOCK_FRAC=0.85;     // 장판이 캐릭터에서 분리·고정되는 충전 비율
   const BEAM_TOL=0.22;      // 장판 자석 정렬 허용각
   const COL_OFFSET=0.16;    // 두 줄(열) 사이 각도(약 9도)
-  const MOVE_SPEED=ARENA_R*0.4; // /초 (이동 속도)
+  const MOVE_SPEED=6; // /초 (이동 속도, 맵 크기와 무관한 고정값)
 
   // ---- 시계 → XZ 좌표 ----
   function clockDirXZ(h){ const a=h*Math.PI/6; return {x:Math.sin(a), z:-Math.cos(a)}; }

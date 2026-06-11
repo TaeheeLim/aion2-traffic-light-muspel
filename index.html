@@ -126,7 +126,7 @@
 </div>
 
 <!-- 공용 게임 로직 -->
-<script src="muspel-logic.js?v=3"></script>
+<script src="muspel-logic.js?v=5"></script>
 
 <!-- =================== RPG 3인칭 렌더 (Three.js) =================== -->
 <script type="module">
@@ -155,18 +155,18 @@ renderer.shadowMap.type = THREE.PCFShadowMap;
 document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x070912);
-scene.fog = new THREE.Fog(0x070912, 90, 280);
+scene.background = new THREE.Color(0x1a0704);
+scene.fog = new THREE.Fog(0x2a0a04, 120, 460); // 용암 대기(붉은 안개)
 
 const camera = new THREE.PerspectiveCamera(55, innerWidth/innerHeight, 0.1, 300);
 
 // ---------- lights ----------
-scene.add(new THREE.HemisphereLight(0x8aa0ff, 0x140a04, 0.45));
-const sun = new THREE.DirectionalLight(0xffe6cc, 1.0); sun.position.set(7,18,9); scene.add(sun);
+scene.add(new THREE.HemisphereLight(0xff7a2a, 0x1a0500, 0.55)); // 용암 빛(위=주황, 아래=암적)
+const sun = new THREE.DirectionalLight(0xffd0a0, 0.9); sun.position.set(7,18,9); scene.add(sun);
 sun.castShadow = true;
 sun.shadow.mapSize.set(1024,1024); // 성능: 그림자맵 축소
-sun.shadow.camera.near=1; sun.shadow.camera.far=90;
-sun.shadow.camera.left=-32; sun.shadow.camera.right=32; sun.shadow.camera.top=32; sun.shadow.camera.bottom=-32;
+sun.shadow.camera.near=1; sun.shadow.camera.far=110;
+sun.shadow.camera.left=-44; sun.shadow.camera.right=44; sun.shadow.camera.top=44; sun.shadow.camera.bottom=-44;
 sun.shadow.bias=-0.0004; sun.shadow.normalBias=0.02;
 const bossLight = new THREE.PointLight(0xff7a18, 3.0, 24, 2); bossLight.position.set(0,3,0); scene.add(bossLight);
 
@@ -192,38 +192,60 @@ function makeTextTexture(txt, {size=128, color="#fff", font="bold 80px sans-seri
   x.fillStyle=color; x.font=font; x.textAlign="center"; x.textBaseline="middle"; x.fillText(txt,size/2,size/2+2);
   const t=new THREE.CanvasTexture(c); t.anisotropy=4; return t;
 }
+// 용암 텍스처(어두운 현무암 + 발광 용암 풀/균열) — emissiveMap으로 빛남
+function makeLavaTexture(size=512){
+  const c=document.createElement("canvas"); c.width=c.height=size; const x=c.getContext("2d");
+  x.fillStyle="#140604"; x.fillRect(0,0,size,size);
+  for(let i=0;i<54;i++){
+    const px=Math.random()*size, py=Math.random()*size, rr=size*(0.02+Math.random()*0.1);
+    const g=x.createRadialGradient(px,py,0,px,py,rr);
+    g.addColorStop(0,"#ffe25a"); g.addColorStop(0.4,"#ff6a1e"); g.addColorStop(1,"rgba(110,18,4,0)");
+    x.fillStyle=g; x.beginPath(); x.arc(px,py,rr,0,Math.PI*2); x.fill();
+  }
+  x.strokeStyle="rgba(255,120,40,0.5)";
+  for(let i=0;i<44;i++){
+    x.lineWidth=1+Math.random()*2.2; x.beginPath();
+    let px=Math.random()*size, py=Math.random()*size; x.moveTo(px,py);
+    for(let j=0;j<5;j++){ px+=(Math.random()-0.5)*size*0.2; py+=(Math.random()-0.5)*size*0.2; x.lineTo(px,py); }
+    x.stroke();
+  }
+  const t=new THREE.CanvasTexture(c); t.wrapS=t.wrapT=THREE.RepeatWrapping; t.anisotropy=4; return t;
+}
+const lavaTex=makeLavaTexture(512); lavaTex.repeat.set(6,6);
 
-// ---------- world: 대지 + 아레나 + 시계 눈금 + 둘레 기둥 ----------
+// ---------- world: 용암 대지 + 아레나 + 시계 눈금 + 둘레 기둥 ----------
 {
-  const ground=new THREE.Mesh(new THREE.CircleGeometry(240,96),
-    new THREE.MeshStandardMaterial({color:0x0a0c14, roughness:1}));
+  // 바깥은 끓는 용암 바다(발광)
+  const ground=new THREE.Mesh(new THREE.CircleGeometry(420,96),
+    new THREE.MeshStandardMaterial({map:lavaTex, emissiveMap:lavaTex, emissive:0xffffff, emissiveIntensity:1.2, color:0x442018, roughness:0.9, metalness:0}));
   ground.rotation.x=-Math.PI/2; ground.position.y=-0.05; ground.receiveShadow=true; scene.add(ground);
 
+  // 아레나는 식은 현무암 발판(가독성 위해 어둡게, 균열만 은은히 발광)
   const floor=new THREE.Mesh(new THREE.CircleGeometry(M.ARENA_R,96),
-    new THREE.MeshStandardMaterial({color:0x131826, roughness:0.92, metalness:0.05}));
+    new THREE.MeshStandardMaterial({color:0x160d0a, emissive:0x5e1604, emissiveIntensity:0.28, roughness:0.95, metalness:0.05}));
   floor.rotation.x=-Math.PI/2; floor.position.y=0; floor.receiveShadow=true; scene.add(floor);
 
-  const rim=new THREE.Mesh(new THREE.RingGeometry(M.ARENA_R-0.1, M.ARENA_R, 96),
-    new THREE.MeshBasicMaterial({color:0x33415f, transparent:true, opacity:0.7, side:THREE.DoubleSide}));
+  const rim=new THREE.Mesh(new THREE.RingGeometry(M.ARENA_R-0.2, M.ARENA_R, 96),
+    new THREE.MeshBasicMaterial({color:0xff6a1e, transparent:true, opacity:0.9, side:THREE.DoubleSide, blending:THREE.AdditiveBlending}));
   rim.rotation.x=-Math.PI/2; rim.position.y=0.02; scene.add(rim);
 
-  const lineMat=new THREE.LineBasicMaterial({color:0x222b3d, transparent:true, opacity:0.55});
+  const lineMat=new THREE.LineBasicMaterial({color:0x5a2a14, transparent:true, opacity:0.5});
   for(let h=1;h<=12;h++){
     const d=M.clockDirXZ(h);
     const g=new THREE.BufferGeometry().setFromPoints([
       new THREE.Vector3(d.x*M.BOSS_R,0.01,d.z*M.BOSS_R),
       new THREE.Vector3(d.x*M.ARENA_R,0.01,d.z*M.ARENA_R)]);
     scene.add(new THREE.Line(g,lineMat));
-    const num=new THREE.Mesh(new THREE.PlaneGeometry(1.1,1.1),
-      new THREE.MeshBasicMaterial({map:makeTextTexture(h+"",{color:"rgba(150,165,195,0.85)",font:"bold 70px sans-serif"}),transparent:true}));
-    num.rotation.x=-Math.PI/2; num.position.set(d.x*(M.ARENA_R-0.9),0.03,d.z*(M.ARENA_R-0.9)); scene.add(num);
-    // 낮은 둘레 포스트(카메라 시야를 가리지 않도록 작게)
-    const pil=new THREE.Mesh(new THREE.CylinderGeometry(0.1,0.13,0.8,8),
-      new THREE.MeshStandardMaterial({color:0x1a2030, emissive:0x2a3a66, emissiveIntensity:0.6, roughness:0.6}));
-    pil.position.set(d.x*(M.ARENA_R+0.9),0.4,d.z*(M.ARENA_R+0.9)); scene.add(pil);
-    const cap=new THREE.Mesh(new THREE.SphereGeometry(0.13,12,10),
-      new THREE.MeshStandardMaterial({color:0x111111, emissive:0x66aaff, emissiveIntensity:1.1}));
-    cap.position.set(d.x*(M.ARENA_R+0.9),0.9,d.z*(M.ARENA_R+0.9)); scene.add(cap);
+    const num=new THREE.Mesh(new THREE.PlaneGeometry(1.4,1.4),
+      new THREE.MeshBasicMaterial({map:makeTextTexture(h+"",{color:"rgba(255,190,130,0.9)",font:"bold 70px sans-serif"}),transparent:true}));
+    num.rotation.x=-Math.PI/2; num.position.set(d.x*(M.ARENA_R-1.4),0.03,d.z*(M.ARENA_R-1.4)); scene.add(num);
+    // 둘레 화톳불 기둥(용암 발광)
+    const pil=new THREE.Mesh(new THREE.CylinderGeometry(0.12,0.16,1.0,8),
+      new THREE.MeshStandardMaterial({color:0x1a0d08, emissive:0x661a08, emissiveIntensity:0.8, roughness:0.6}));
+    pil.position.set(d.x*(M.ARENA_R+1.2),0.5,d.z*(M.ARENA_R+1.2)); scene.add(pil);
+    const cap=new THREE.Mesh(new THREE.SphereGeometry(0.16,12,10),
+      new THREE.MeshStandardMaterial({color:0x111111, emissive:0xff7a18, emissiveIntensity:1.4}));
+    cap.position.set(d.x*(M.ARENA_R+1.2),1.1,d.z*(M.ARENA_R+1.2)); scene.add(cap);
   }
   for(const rr of [M.ARENA_R*0.35, M.ARENA_R*0.6, M.ARENA_R*0.82]){
     const seg=96,pts=[]; for(let i=0;i<=seg;i++){const a=i/seg*TAU;pts.push(new THREE.Vector3(Math.cos(a)*rr,0.008,Math.sin(a)*rr));}
@@ -231,16 +253,16 @@ function makeTextTexture(txt, {size=128, color="#fff", font="bold 80px sans-seri
   }
 }
 
-// ---------- 주변 장식: 발광 수정 군집(넓은 맵의 깊이감) ----------
+// ---------- 주변 장식: 흑요석 용암 첨탑(붉게 달궈진 바위) ----------
 {
-  const cMat=new THREE.MeshStandardMaterial({color:0x1a2238, emissive:0x3a66cc, emissiveIntensity:0.9, metalness:0.4, roughness:0.35, flatShading:true});
-  for(let i=0;i<18;i++){
-    const a=(i/18)*TAU+0.35, r=M.ARENA_R+5+(i%3)*4.5;
+  const cMat=new THREE.MeshStandardMaterial({color:0x140a08, emissive:0xff3a10, emissiveIntensity:0.7, metalness:0.2, roughness:0.55, flatShading:true});
+  for(let i=0;i<26;i++){
+    const a=(i/26)*TAU+0.35, r=M.ARENA_R+6+(i%4)*6;
     const cl=new THREE.Group();
-    const h=2.0+(i%4)*1.1;
-    const c1=new THREE.Mesh(new THREE.ConeGeometry(0.7,h,5), cMat); c1.position.y=h/2; cl.add(c1);
-    const c2=new THREE.Mesh(new THREE.ConeGeometry(0.42,h*0.6,5), cMat); c2.position.set(0.7,h*0.3,0.3); cl.add(c2);
-    const c3=new THREE.Mesh(new THREE.ConeGeometry(0.34,h*0.45,5), cMat); c3.position.set(-0.55,h*0.22,-0.2); cl.add(c3);
+    const h=3.0+(i%4)*1.8;
+    const c1=new THREE.Mesh(new THREE.ConeGeometry(1.0,h,5), cMat); c1.position.y=h/2; cl.add(c1);
+    const c2=new THREE.Mesh(new THREE.ConeGeometry(0.6,h*0.6,5), cMat); c2.position.set(1.0,h*0.3,0.4); cl.add(c2);
+    const c3=new THREE.Mesh(new THREE.ConeGeometry(0.5,h*0.45,5), cMat); c3.position.set(-0.8,h*0.22,-0.3); cl.add(c3);
     cl.position.set(Math.cos(a)*r,0,Math.sin(a)*r); cl.rotation.y=a*1.7;
     scene.add(cl); // 장식물은 그림자 캐스트 안 함(성능)
   }
@@ -380,7 +402,7 @@ foot.rotation.x=-Math.PI/2; foot.position.y=0.05; hero.add(foot);
 
 // ---------- 대쉬 시작 충격파(잔상 없음) ----------
 const dashBurst=new THREE.Mesh(new THREE.RingGeometry(0.5,1.0,40),
-  new THREE.MeshBasicMaterial({color:0x99e6ff, transparent:true, opacity:0, side:THREE.DoubleSide, blending:THREE.AdditiveBlending, depthWrite:false}));
+  new THREE.MeshBasicMaterial({color:0xffd9a0, transparent:true, opacity:0, side:THREE.DoubleSide, blending:THREE.AdditiveBlending, depthWrite:false}));
 dashBurst.rotation.x=-Math.PI/2; dashBurst.visible=false; scene.add(dashBurst);
 let dashBurstT=0, dashBurstX=0, dashBurstZ=0;
 function updateDashFx(dt){

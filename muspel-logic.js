@@ -17,8 +17,8 @@ window.MUSPEL = (function(){
 
   // ---- 월드 치수 (월드 유닛) ----
   const ARENA_R = 50;
-  const BOSS_R  = 1.6;
-  const RING_R  = [BOSS_R+1.4, BOSS_R+0.9, BOSS_R+0.45]; // 바깥/중간/안쪽
+  const BOSS_R  = 4.0;
+  const RING_R  = [BOSS_R+3.5, BOSS_R+2.2, BOSS_R+1.0]; // 바깥/중간/안쪽 (크게·분리)
   const ARRIVAL = BOSS_R+0.25;                            // 진입 판정 반지름
   const ORB_R   = 0.32;
   const PLAYER_R= 0.26;

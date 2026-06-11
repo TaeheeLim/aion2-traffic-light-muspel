@@ -111,7 +111,7 @@
     </div>
   </div>
 
-  <div id="hint">WASD 이동 &nbsp;|&nbsp; Shift 순간 대쉬(회피) &nbsp;|&nbsp; 화면 클릭→마우스 시점(ESC 해제) &nbsp;|&nbsp; 휠 줌 &nbsp;|&nbsp; ⚠ 붉은 장판 피하기!</div>
+  <div id="hint">Space 시작/중지 · R 리셋 &nbsp;|&nbsp; WASD 이동 · Shift 대쉬 &nbsp;|&nbsp; 클릭→마우스 시점(ESC) · 휠 줌 &nbsp;|&nbsp; ⚠ 붉은 장판 피하기!</div>
 
   <div id="stick">
     <div id="stickBase"></div>
@@ -126,7 +126,7 @@
 </div>
 
 <!-- 공용 게임 로직 -->
-<script src="muspel-logic.js?v=8"></script>
+<script src="muspel-logic.js?v=9"></script>
 
 <!-- =================== RPG 3인칭 렌더 (Three.js) =================== -->
 <script type="module">
@@ -168,7 +168,7 @@ sun.shadow.mapSize.set(1024,1024); // 성능: 그림자맵 축소
 sun.shadow.camera.near=1; sun.shadow.camera.far=125;
 sun.shadow.camera.left=-48; sun.shadow.camera.right=48; sun.shadow.camera.top=48; sun.shadow.camera.bottom=-48;
 sun.shadow.bias=-0.0004; sun.shadow.normalBias=0.02;
-const bossLight = new THREE.PointLight(0xff7a18, 3.0, 24, 2); bossLight.position.set(0,3,0); scene.add(bossLight);
+const bossLight = new THREE.PointLight(0xff5a18, 3.0, 50, 2); bossLight.position.set(0, M.BOSS_R*1.8, 0); scene.add(bossLight);
 
 // 환경광(PBR 반사) — RoomEnvironment 기반 IBL
 const pmrem = new THREE.PMREMGenerator(renderer);
@@ -268,22 +268,42 @@ const lavaTex=makeLavaTexture(512); lavaTex.repeat.set(10,10);
   }
 }
 
-// ---------- boss (추상 발광) ----------
+// ---------- boss: 듄 모래벌레풍 거수(빨강·검정) ----------
 const bossGroup=new THREE.Group(); scene.add(bossGroup);
 {
-  const core=new THREE.Mesh(new THREE.IcosahedronGeometry(M.BOSS_R*0.95,1),
-    new THREE.MeshStandardMaterial({color:0x3a1405, emissive:0xff5a14, emissiveIntensity:1.4, roughness:0.4, metalness:0.3, flatShading:true}));
-  core.position.y=M.BOSS_R*1.1; core.castShadow=true; bossGroup.add(core);
-  const shell=new THREE.Mesh(new THREE.IcosahedronGeometry(M.BOSS_R*1.2,1),
-    new THREE.MeshBasicMaterial({color:0xff8a3a, wireframe:true, transparent:true, opacity:0.32}));
-  shell.position.y=M.BOSS_R*1.1; bossGroup.add(shell);
-  const base=new THREE.Mesh(new THREE.CylinderGeometry(M.BOSS_R*0.7,M.BOSS_R*0.95,M.BOSS_R*1.1,24),
-    new THREE.MeshStandardMaterial({color:0x20100a, emissive:0x802808, emissiveIntensity:0.5, roughness:0.7}));
-  base.position.y=M.BOSS_R*0.55; bossGroup.add(base);
-  const halo=new THREE.Mesh(new THREE.CircleGeometry(M.BOSS_R*1.3,48),
-    new THREE.MeshBasicMaterial({color:0xff5a14, transparent:true, opacity:0.16}));
-  halo.rotation.x=-Math.PI/2; halo.position.y=0.03; bossGroup.add(halo);
-  bossGroup.userData={core,shell};
+  const R=M.BOSS_R;
+  // 본체(어두운 살갗 + 붉은 발광 균열)
+  const bodyMat=new THREE.MeshStandardMaterial({color:0x130a09, emissive:0x6e1004, emissiveIntensity:0.35, roughness:0.85, metalness:0.1, flatShading:true});
+  const body=new THREE.Mesh(new THREE.CylinderGeometry(R*0.8, R*1.08, R*3.0, 18, 1, false), bodyMat);
+  body.position.y=R*1.5; body.castShadow=true; bossGroup.add(body);
+  // 체절 띠(판)
+  for(let i=0;i<5;i++){
+    const seg=new THREE.Mesh(new THREE.TorusGeometry(R*(0.86-i*0.03), R*0.12, 8, 20), bodyMat);
+    seg.rotation.x=Math.PI/2; seg.position.y=R*0.55 + i*(R*0.52); seg.castShadow=true; bossGroup.add(seg);
+  }
+  // 목구멍(빛나는 빨강) — 맥동
+  const throat=new THREE.Mesh(new THREE.CylinderGeometry(R*0.62, R*0.16, R*1.6, 24, 1, true),
+    new THREE.MeshStandardMaterial({color:0x230000, emissive:0xff2a08, emissiveIntensity:1.4, roughness:0.5, side:THREE.DoubleSide}));
+  throat.position.y=R*2.4; bossGroup.add(throat);
+  const gullet=new THREE.Mesh(new THREE.CircleGeometry(R*0.52,30),
+    new THREE.MeshBasicMaterial({color:0xff5a18}));
+  gullet.rotation.x=-Math.PI/2; gullet.position.y=R*1.72; bossGroup.add(gullet);
+  // 원형 입의 이빨(위로 솟은 송곳니, 안쪽으로 약간 기울임)
+  const maw=new THREE.Group(); maw.position.y=R*2.92; bossGroup.add(maw);
+  const toothMat=new THREE.MeshStandardMaterial({color:0xd9cfc1, roughness:0.6, metalness:0.0, emissive:0x140000, emissiveIntensity:0.2});
+  const teeth=20, tr=R*0.74;
+  for(let i=0;i<teeth;i++){
+    const a=(i/teeth)*TAU, big=(i%2===0);
+    const tg=new THREE.Group(); tg.position.set(Math.cos(a)*tr,0,Math.sin(a)*tr); tg.lookAt(0,0,0);
+    const t=new THREE.Mesh(new THREE.ConeGeometry(R*(big?0.12:0.09), R*(big?0.75:0.55), 6), toothMat);
+    t.position.set(0,R*(big?0.34:0.26),0); t.rotation.x=-0.5; // 안쪽으로 기울임
+    t.castShadow=true; tg.add(t); maw.add(tg);
+  }
+  // 바닥 용암 자국
+  const halo=new THREE.Mesh(new THREE.CircleGeometry(R*1.5,48),
+    new THREE.MeshBasicMaterial({color:0xff2a08, transparent:true, opacity:0.18}));
+  halo.rotation.x=-Math.PI/2; halo.position.y=0.04; bossGroup.add(halo);
+  bossGroup.userData={core:throat, maw};
 }
 
 // ---------- 보스 불티 파티클 ----------
@@ -305,9 +325,9 @@ function updateEmbers(dt){
 // ---------- 3겹 링 ----------
 const ringMeshes=[];
 for(let i=0;i<3;i++){
-  const m=new THREE.Mesh(new THREE.TorusGeometry(M.RING_R[i],0.08,16,120),
-    new THREE.MeshStandardMaterial({color:0x111111, emissive:0xffffff, emissiveIntensity:1.4, roughness:0.5, metalness:0.2}));
-  m.rotation.x=-Math.PI/2; m.position.y=0.14; scene.add(m); ringMeshes.push(m);
+  const m=new THREE.Mesh(new THREE.TorusGeometry(M.RING_R[i],0.22,18,140),
+    new THREE.MeshStandardMaterial({color:0x111111, emissive:0xffffff, emissiveIntensity:1.5, roughness:0.5, metalness:0.2}));
+  m.rotation.x=-Math.PI/2; m.position.y=0.2; scene.add(m); ringMeshes.push(m);
 }
 
 // ---------- orb pool ----------
@@ -494,9 +514,9 @@ const _c=new THREE.Color(), _c2=new THREE.Color();
 function lerpColor(out,hexA,hexB,t){ out.set(hexA); out.lerp(_c2.set(hexB),t); return out; }
 function syncBoss(t){
   const ud=bossGroup.userData;
-  ud.core.rotation.y+=0.006; ud.core.rotation.x+=0.003; ud.shell.rotation.y-=0.004;
-  ud.core.material.emissiveIntensity=1.2+0.25*Math.sin(t*0.003);
-  bossLight.intensity=2.4+0.6*Math.sin(t*0.003);
+  ud.core.material.emissiveIntensity=1.2+0.6*Math.sin(t*0.003); // 목구멍 맥동
+  ud.maw.rotation.y += 0.004; // 이빨 천천히 회전
+  bossLight.intensity=3.0+1.0*Math.sin(t*0.003);
 }
 function syncRings(){
   for(let i=0;i<3;i++){
@@ -718,6 +738,11 @@ function syncHero(){
 addEventListener("keydown",e=>{
   if(["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"," "].includes(e.key)) e.preventDefault();
   if((e.code==="ShiftLeft"||e.code==="ShiftRight") && !e.repeat) tryDash(); // 누르는 순간 1회 대쉬
+  // 단축키: Space/Enter=시작·중지(게임오버 시 재시작), R=리셋
+  if(!e.repeat){
+    if(e.code==="Space"||e.code==="Enter"){ e.preventDefault(); G.running?stop():start(); }
+    else if(e.code==="KeyR"){ stop(); M.reset(); M.newRings(); resetAoe(); over.classList.remove("show"); }
+  }
   M.keys.add(e.code);   // 물리 키 코드로 저장(Shift 대소문자 문제 회피)
 });
 addEventListener("keyup",e=>M.keys.delete(e.code));

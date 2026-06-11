@@ -177,7 +177,7 @@ window.MUSPEL = (function(){
   }
 
   function playerAngle(){ return Math.atan2(G.player.z, G.player.x); }
-  function placePlayerAtClock(clock){ const a=clockAngle(clock); G.player.x=Math.cos(a)*ARENA_R*0.7; G.player.z=Math.sin(a)*ARENA_R*0.7; }
+  function placePlayerAtClock(clock){ const a=clockAngle(clock); G.player.x=Math.cos(a)*ARENA_R*0.42; G.player.z=Math.sin(a)*ARENA_R*0.42; } // 보스/링에 더 가깝게 시작
   function reset(){ G.cols=[]; G.beam=null; G.fx=[]; G.laneSeq=0; G.respawn=0; G.wrong=0; }
   function startRound(){ reset(); placePlayerAtClock(G.clock); newRings(); spawnLane(G.clock); }
 

@@ -1,0 +1,695 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>무스펠의 성배 — 신호등 연습 (3D)</title>
+<style>
+  :root{
+    --bg:#0b0d12; --panel:#171b25; --panel2:#1d2230; --line:#2a3142;
+    --txt:#e8ecf4; --muted:#8b95a8; --accent:#ff7a18;
+    --red:#ff4d5e; --green:#27d97a; --blue:#4db5ff;
+    --shadow:0 8px 30px rgba(0,0,0,.45);
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;margin:0;background:var(--bg);overflow:hidden;
+    font-family:"Pretendard","Segoe UI",system-ui,-apple-system,"Malgun Gothic",sans-serif;color:var(--txt);}
+  canvas{display:block;touch-action:none;}
+
+  /* ---- HUD (DOM 오버레이) ---- */
+  #hud{position:fixed;inset:0;pointer-events:none;z-index:5;}
+  .topbar{position:absolute;top:12px;left:50%;transform:translateX(-50%);
+    display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:center;
+    padding:9px 14px;background:rgba(23,27,37,.82);border:1px solid var(--line);
+    border-radius:14px;box-shadow:var(--shadow);pointer-events:auto;backdrop-filter:blur(6px);max-width:94vw;}
+  .topbar h1{font-size:15px;font-weight:800;letter-spacing:-.3px;display:flex;gap:7px;align-items:center;white-space:nowrap;}
+  .topbar h1 .flame{filter:drop-shadow(0 0 8px var(--accent));}
+  .mini{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);font-weight:700;}
+  select{background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:10px;padding:7px 9px;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;}
+  .btn{border:none;border-radius:11px;padding:9px 18px;font-size:14px;font-weight:800;cursor:pointer;transition:.13s;letter-spacing:.3px;}
+  .btn:active{transform:translateY(1px);}
+  .btn.primary{background:linear-gradient(180deg,var(--accent),#e0640d);color:#fff;box-shadow:0 6px 18px rgba(255,122,24,.4);}
+  .btn.ghost{background:var(--panel2);color:var(--txt);border:1px solid var(--line);padding:9px 13px;}
+
+  /* 좌상단 테두리 범례 */
+  #legend{position:absolute;top:74px;left:14px;background:rgba(23,27,37,.7);border:1px solid var(--line);
+    border-radius:12px;padding:10px 12px;font-size:12px;min-width:170px;backdrop-filter:blur(6px);}
+  #legend .ttl{font-weight:800;color:var(--muted);margin-bottom:7px;font-size:11px;letter-spacing:.3px;}
+  #legend .row{display:flex;align-items:center;gap:8px;margin:5px 0;font-weight:700;}
+  #legend .dot{width:14px;height:14px;border-radius:50%;flex:0 0 14px;box-shadow:0 0 8px currentColor;}
+  #legend .row.gone{opacity:.32;}
+  #legend .row.gone .dot{box-shadow:none;}
+  #legend .chk{margin-left:auto;color:var(--green);font-weight:900;}
+
+  /* 우상단 상태 */
+  #status{position:absolute;top:74px;right:14px;text-align:right;background:rgba(23,27,37,.7);
+    border:1px solid var(--line);border-radius:12px;padding:10px 14px;backdrop-filter:blur(6px);}
+  #status .big{font-size:22px;font-weight:900;color:#ffd29a;text-shadow:0 0 12px rgba(255,170,70,.4);}
+  #status .sub{font-size:12px;color:var(--muted);font-weight:700;margin-top:3px;}
+  #status .wrong{font-size:12px;font-weight:800;margin-top:6px;color:var(--muted);}
+  #status .wrong b{color:var(--red);}
+
+  /* 하단 힌트 */
+  #hint{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);
+    font-size:12px;color:var(--muted);font-weight:600;background:rgba(23,27,37,.6);
+    padding:6px 14px;border-radius:20px;border:1px solid var(--line);white-space:nowrap;}
+
+  /* 실패 오버레이 */
+  #over{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;
+    gap:16px;background:rgba(10,8,6,.78);backdrop-filter:blur(3px);pointer-events:auto;text-align:center;padding:20px;}
+  #over.show{display:flex;}
+  #over h2{font-size:32px;font-weight:900;color:var(--red);letter-spacing:1px;text-shadow:0 0 22px rgba(255,77,94,.5);}
+  #over p{color:var(--muted);font-size:14px;}
+
+  @media (max-width:560px){ #legend,#status{font-size:11px;padding:8px 10px;} #hint{font-size:11px;} .topbar h1{font-size:13px;} }
+</style>
+<script type="importmap">{ "imports": {
+  "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+}}</script>
+</head>
+<body>
+<div id="hud">
+  <div class="topbar">
+    <h1><span class="flame">🔥</span> 무스펠의 성배 — 3D</h1>
+    <label class="mini">시작 위치
+      <select id="clock">
+        <option value="12">12시</option><option value="1">1시 (두 줄)</option><option value="2">2시</option>
+        <option value="3">3시</option><option value="4" selected>4시 (두 줄)</option><option value="5">5시</option>
+        <option value="6">6시</option><option value="7">7시 (두 줄)</option><option value="8">8시</option>
+        <option value="9">9시</option><option value="10">10시 (두 줄)</option><option value="11">11시</option>
+      </select>
+    </label>
+    <button class="btn primary" id="startBtn">▶ 시작</button>
+    <button class="btn ghost" id="resetBtn">↺</button>
+  </div>
+
+  <div id="legend">
+    <div class="ttl">테두리 (바깥 → 안쪽)</div>
+    <div class="row" data-i="0"><span class="dot"></span><span class="lbl">1번 구슬</span><span class="chk"></span></div>
+    <div class="row" data-i="1"><span class="dot"></span><span class="lbl">2번 구슬</span><span class="chk"></span></div>
+    <div class="row" data-i="2"><span class="dot"></span><span class="lbl">3번 구슬</span><span class="chk"></span></div>
+  </div>
+
+  <div id="status">
+    <div class="big" id="expTxt">폭발 0/7</div>
+    <div class="sub" id="nextTxt">대기 중</div>
+    <div class="wrong" id="wrongTxt">오답 <b>0</b> / 2</div>
+  </div>
+
+  <div id="hint">이동: WASD·방향키·드래그 &nbsp;|&nbsp; O: 자유 시점 &nbsp;|&nbsp; 장판은 자동 생성</div>
+
+  <div id="over">
+    <h2>게임 실패</h2>
+    <p>잘못된 색 구슬 2개가 보스에 들어갔습니다.</p>
+    <button class="btn primary" id="retryBtn">▶ 다시 시작</button>
+  </div>
+</div>
+
+<!-- =================== 게임 로직 (프레임워크 무관, 2D에서 1:1 포팅) =================== -->
+<script>
+"use strict";
+window.MUSPEL = (function(){
+  const TAU=Math.PI*2, clamp=(v,a,b)=>Math.max(a,Math.min(b,v)), lerp=(a,b,t)=>a+(b-a)*t;
+  const rand=n=>Math.floor(Math.random()*n);
+
+  // colors: 0=빨,1=초,2=파 (순환 빨→초→파→빨…)
+  const COL=[
+    {hex:"#ff4d5e", rgb:0xff4d5e, name:"빨"},
+    {hex:"#27d97a", rgb:0x27d97a, name:"초"},
+    {hex:"#4db5ff", rgb:0x4db5ff, name:"파"},
+  ];
+
+  // ---- 월드 치수 (월드 유닛) ----
+  const ARENA_R = 10;
+  const BOSS_R  = 1.6;
+  const RING_R  = [BOSS_R+1.4, BOSS_R+0.9, BOSS_R+0.45]; // 바깥/중간/안쪽
+  const ARRIVAL = BOSS_R+0.25;                            // 진입 판정 반지름
+  const ORB_R   = 0.32;
+  const PLAYER_R= 0.26;
+  const BEAM_W  = 0.7;
+
+  // ---- 게임 상수 (2D에서 그대로) ----
+  const DOUBLE_CLOCKS=new Set([1,4,7,10]);
+  const COMMIT=[3,5,7];     // 1·2·3번 구슬 진입 누적 폭발 횟수
+  const ENTER_DELAY=1.0;    // 색 확정 후 진입까지 지연(초)
+  const ARM_TIME=3.0;       // 장판 생성→폭발 주기 = 전체 속도
+  const LOCK_FRAC=0.85;     // 장판이 캐릭터에서 분리·고정되는 충전 비율
+  const BEAM_TOL=0.22;      // 장판 자석 정렬 허용각
+  const COL_OFFSET=0.16;    // 두 줄(열) 사이 각도(약 9도)
+  const MOVE_SPEED=ARENA_R*0.8; // /초
+
+  // ---- 시계 → XZ 좌표 ----
+  // 12시 → (0,0,-1) 화면 안쪽, 3시 → (1,0,0) 오른쪽, 6시 → (0,0,1) 앞, 9시 → (-1,0,0) 왼쪽
+  function clockDirXZ(h){ const a=h*Math.PI/6; return {x:Math.sin(a), z:-Math.cos(a)}; }
+  // 로직은 (x,z) 각도로 통일 — 2D의 atan2(y,x) ↔ 3D의 atan2(z,x)
+  function clockAngle(h){ const d=clockDirXZ(h); return Math.atan2(d.z, d.x); }
+  function angDiff(a,b){ let d=a-b; while(d>Math.PI)d-=TAU; while(d<-Math.PI)d+=TAU; return d; }
+
+  // ---- 상태 (2D G와 동일한 모양) ----
+  const G={
+    clock:4, sound:true, running:false, wrong:0,
+    rings:[0,1,2], ringGone:[false,false,false],
+    cols:[], beam:null, fx:[],
+    player:{x:0,z:0}, laneSeq:0, respawn:0,
+    onGameOver:null, // 렌더 측에서 주입
+  };
+
+  // ---- 반지름 계산 ----
+  const spawnRadFor=tr=>ARRIVAL+(ARENA_R*0.97-ARRIVAL)*((tr+1)/3);
+  function armFrac(){ return G.beam? clamp(G.beam.t/ARM_TIME,0,1):0; }
+  function orbRad(col,orb){
+    if(orb.entering) return lerp(ARRIVAL, BOSS_R*0.25, clamp(orb.enterT/ENTER_DELAY,0,1));
+    const eff=col.exp+armFrac();
+    return lerp(spawnRadFor(orb.tr), ARRIVAL, clamp(eff/COMMIT[orb.tr],0,1));
+  }
+
+  // ---- 라운드 ----
+  function newRings(){ // 빨/초/파 무작위 순열(반드시 서로 다른 3색)
+    const a=[0,1,2]; for(let i=2;i>0;i--){const j=rand(i+1);[a[i],a[j]]=[a[j],a[i]];}
+    G.rings=a; G.ringGone=[false,false,false];
+  }
+  function removeRing(i){ // 정답 구슬이 그 자리에 들어갈 때만 호출
+    if(i>=0 && i<3 && !G.ringGone[i]){ G.ringGone[i]=true; G.fx.push({type:"ring",i,r:RING_R[i],col:COL[G.rings[i]].rgb,t:0}); }
+  }
+  // 3·5·7 폭발 스케줄 안에서 테두리 색으로 맞춰질 수 있는지 — (열수+1)^7 완전탐색
+  function laneSolvable(cols){
+    const n=cols.length, choices=n+1, total=Math.pow(choices,7);
+    const need=cols.map(c=>c.orbs.map(o=>(((G.rings[o.tr]-o.cidx)%3)+3)%3));
+    for(let mask=0; mask<total; mask++){
+      let m=mask; const a=[]; for(let e=0;e<7;e++){a.push(m%choices);m=(m/choices)|0;}
+      let ok=true;
+      for(let ci=0; ci<n && ok; ci++){
+        for(const o of cols[ci].orbs){
+          let h=0; for(let e=0;e<COMMIT[o.tr];e++) if(a[e]===ci+1) h++;
+          if(h%3!==need[ci][o.tr]){ ok=false; break; }
+        }
+      }
+      if(ok) return true;
+    }
+    return false;
+  }
+  function spawnLane(clock){
+    const base=clockAngle(clock);
+    const cnt=DOUBLE_CLOCKS.has(((clock%12)+12)%12||12)?2:1;
+    const id=G.laneSeq++;
+    let cols, tries=0;
+    do{
+      cols=[];
+      for(let c=0;c<cnt;c++){
+        const ang=base+(cnt===1?0:(c===0?-COL_OFFSET:COL_OFFSET));
+        let cc; do{ cc=[rand(3),rand(3),rand(3)]; }while(cc[0]===cc[1]&&cc[1]===cc[2]); // 3개 모두 같은 색 금지
+        const orbs=cc.map((v,i)=>({cidx:v,tr:i,committed:false,entering:false,enterT:0}));
+        cols.push({laneId:id, clock, ang, exp:0, orbs, alive:true});
+      }
+      tries++;
+    }while(!laneSolvable(cols) && tries<400);
+    cols.forEach(c=>G.cols.push(c));
+  }
+  function laneCount(){ const s=new Set(); G.cols.forEach(c=>{if(c.alive)s.add(c.laneId);}); return s.size; }
+
+  // ---- 폭발 / 진입 ----
+  function explode(){
+    const b=G.beam;
+    let tgt=null,best=BEAM_TOL;
+    for(const col of G.cols){ if(!col.alive)continue; const d=Math.abs(angDiff(col.ang,b.ang)); if(d<=best){best=d;tgt=col;} }
+    if(tgt){ // 직선이 지나는 '한 줄' 전체(진입 중 아닌 구슬)만 빨→초→파 한 칸 변경
+      tgt.orbs.forEach(o=>{ if(!o.committed && !o.entering) o.cidx=(o.cidx+1)%3; });
+    }
+    G.fx.push({type:"boom",ang:b.ang,len:ARENA_R,t:0});
+    // 폭발 누적 → 임계 도달 구슬은 '진입 시작'(색 고정, 1초 뒤 실제 진입)
+    for(const col of G.cols){ if(!col.alive)continue; col.exp++;
+      for(const o of col.orbs){ if(!o.committed && !o.entering && col.exp>=COMMIT[o.tr]){ o.entering=true; o.enterT=0; } }
+    }
+    if(G.onBoom) G.onBoom();
+    G.beam=null;
+  }
+  function commitOrb(col,o){
+    o.committed=true;
+    const want=G.rings[o.tr];
+    const px=Math.cos(col.ang)*BOSS_R*0.6, pz=Math.sin(col.ang)*BOSS_R*0.6;
+    if(o.cidx===want){ removeRing(o.tr); G.fx.push({type:"hit",x:px,z:pz,t:0,ok:true}); if(G.onHit)G.onHit(true); }
+    else { G.wrong++; G.fx.push({type:"hit",x:px,z:pz,t:0,ok:false}); if(G.onHit)G.onHit(false); if(G.wrong>=2 && G.onGameOver) G.onGameOver(); }
+  }
+
+  // ---- 입력 키 ----
+  const keys=new Set();
+
+  // ---- 메인 업데이트 (2D update() 포팅) ----
+  function update(dt){
+    // 이동 (WASD/방향키): 화면 위=−Z(Away), 오른쪽=+X
+    const sp=MOVE_SPEED*dt; let vx=0,vz=0;
+    if(keys.has("ArrowUp")||keys.has("w")||keys.has("W"))vz-=1;
+    if(keys.has("ArrowDown")||keys.has("s")||keys.has("S"))vz+=1;
+    if(keys.has("ArrowLeft")||keys.has("a")||keys.has("A"))vx-=1;
+    if(keys.has("ArrowRight")||keys.has("d")||keys.has("D"))vx+=1;
+    if(vx||vz){const m=Math.hypot(vx,vz);G.player.x+=vx/m*sp;G.player.z+=vz/m*sp;}
+    // 반지름 클램프
+    let pd=Math.hypot(G.player.x,G.player.z)||1;
+    const minD=BOSS_R+0.5, maxD=ARENA_R;
+    if(pd<minD){G.player.x=G.player.x/pd*minD;G.player.z=G.player.z/pd*minD;}
+    if(pd>maxD){G.player.x=G.player.x/pd*maxD;G.player.z=G.player.z/pd*maxD;}
+
+    // 단일 레인 연습 — 비면 재스폰
+    if(laneCount()===0){ if(G.respawn<=0)G.respawn=0.9; G.respawn-=dt; if(G.respawn<=0){ newRings(); spawnLane(G.clock);} }
+
+    // 장판: 캐릭터 추종 → LOCK_FRAC에서 분리·고정 → 폭발
+    if(G.cols.some(c=>c.alive)){
+      const pa=Math.atan2(G.player.z,G.player.x);
+      if(!G.beam) G.beam={t:0,ang:pa,locked:false};
+      const b=G.beam;
+      b.t+=dt;
+      if(!b.locked){
+        let bb=BEAM_TOL, snap=null;
+        for(const col of G.cols){ if(!col.alive)continue; const dd=Math.abs(angDiff(col.ang,pa)); if(dd<bb){bb=dd;snap=col.ang;} }
+        b.ang=(snap!==null)?snap:pa;
+        if(b.t>=LOCK_FRAC*ARM_TIME){ b.locked=true; if(G.onCast)G.onCast(); }
+      }
+      if(b.t>=ARM_TIME) explode();
+    } else G.beam=null;
+
+    // 진입 중 구슬: 보스로 빨려들어가고 ENTER_DELAY 후 commit
+    for(const col of G.cols){ if(!col.alive)continue;
+      for(const o of col.orbs){ if(o.entering && !o.committed){ o.enterT+=dt; if(o.enterT>=ENTER_DELAY) commitOrb(col,o); } }
+      col.orbs=col.orbs.filter(o=>!o.committed);
+      if(col.orbs.length===0) col.alive=false;
+    }
+    G.cols=G.cols.filter(c=>c.alive);
+
+    for(const f of G.fx) f.t+=dt;
+    G.fx=G.fx.filter(f=>f.t<(f.type==="boom"?0.5:(f.type==="ring"?0.6:0.7)));
+  }
+
+  function placePlayerAtClock(clock){ const a=clockAngle(clock); G.player.x=Math.cos(a)*ARENA_R*0.7; G.player.z=Math.sin(a)*ARENA_R*0.7; }
+
+  function reset(){ G.cols=[]; G.beam=null; G.fx=[]; G.laneSeq=0; G.respawn=0; G.wrong=0; }
+  function startRound(){ reset(); placePlayerAtClock(G.clock); newRings(); spawnLane(G.clock); }
+
+  return {
+    G, COL, keys,
+    ARENA_R, BOSS_R, RING_R, ARRIVAL, ORB_R, PLAYER_R, BEAM_W,
+    COMMIT, ENTER_DELAY, ARM_TIME, LOCK_FRAC, DOUBLE_CLOCKS,
+    clockDirXZ, clockAngle, orbRad, update, newRings, spawnLane,
+    placePlayerAtClock, reset, startRound, laneCount, laneSolvable,
+  };
+})();
+</script>
+
+<!-- =================== 렌더 (Three.js) =================== -->
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+const M = window.MUSPEL;
+const G = M.G, COL = M.COL;
+const TAU = Math.PI*2;
+
+// ---------- renderer / scene / camera ----------
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0b0d12);
+scene.fog = new THREE.Fog(0x0b0d12, 22, 46);
+
+const camera = new THREE.PerspectiveCamera(48, innerWidth/innerHeight, 0.1, 200);
+camera.position.set(0, 21, 16);
+camera.lookAt(0,0,0);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0,0,0);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.maxPolarAngle = Math.PI*0.49;
+controls.minDistance = 12; controls.maxDistance = 40;
+controls.enabled = false; // 기본 비활성, 'O'로 토글
+
+// ---------- lights ----------
+scene.add(new THREE.HemisphereLight(0x8899ff, 0x140a04, 0.55));
+const dir = new THREE.DirectionalLight(0xffffff, 0.7); dir.position.set(5,14,7); scene.add(dir);
+const bossLight = new THREE.PointLight(0xff7a18, 2.2, 16, 2); bossLight.position.set(0,2.2,0); scene.add(bossLight);
+
+// ---------- postproc (Bloom) ----------
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene,camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth,innerHeight), 0.8, 0.4, 0.6);
+composer.addPass(bloom);
+
+addEventListener('resize',()=>{
+  camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth,innerHeight); composer.setSize(innerWidth,innerHeight);
+});
+
+// ---------- helpers ----------
+function makeTextTexture(txt, {size=128, color="#ffffff", bg=null, font="bold 80px sans-serif"}={}){
+  const c=document.createElement("canvas"); c.width=c.height=size; const x=c.getContext("2d");
+  if(bg){ x.fillStyle=bg; x.beginPath(); x.arc(size/2,size/2,size/2,0,TAU); x.fill(); }
+  x.fillStyle=color; x.font=font; x.textAlign="center"; x.textBaseline="middle";
+  x.fillText(txt, size/2, size/2+2);
+  const t=new THREE.CanvasTexture(c); t.anisotropy=4; return t;
+}
+
+// ---------- floor + clock marks ----------
+const floorGroup = new THREE.Group(); scene.add(floorGroup);
+{
+  const floor = new THREE.Mesh(
+    new THREE.CircleGeometry(M.ARENA_R, 96),
+    new THREE.MeshStandardMaterial({color:0x10141d, roughness:0.95, metalness:0.0})
+  );
+  floor.rotation.x = -Math.PI/2; floor.position.y = -0.02;
+  floorGroup.add(floor);
+
+  // 외곽 링
+  const rim = new THREE.Mesh(
+    new THREE.RingGeometry(M.ARENA_R-0.06, M.ARENA_R, 96),
+    new THREE.MeshBasicMaterial({color:0x2a3550, transparent:true, opacity:0.6, side:THREE.DoubleSide})
+  );
+  rim.rotation.x = -Math.PI/2; rim.position.y = 0.01; floorGroup.add(rim);
+
+  // 시계 방사선(12눈금) + 동심원
+  const lineMat = new THREE.LineBasicMaterial({color:0x222b3d, transparent:true, opacity:0.5});
+  for(let h=1;h<=12;h++){
+    const d=M.clockDirXZ(h);
+    const g=new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(d.x*M.BOSS_R, 0.005, d.z*M.BOSS_R),
+      new THREE.Vector3(d.x*M.ARENA_R, 0.005, d.z*M.ARENA_R),
+    ]);
+    floorGroup.add(new THREE.Line(g, lineMat));
+    // 시계 숫자 스프라이트
+    const spr=new THREE.Sprite(new THREE.SpriteMaterial({map:makeTextTexture(h+"", {color:"rgba(170,182,205,0.9)", font:"bold 64px sans-serif"}), transparent:true, depthWrite:false}));
+    spr.position.set(d.x*(M.ARENA_R+0.7), 0.4, d.z*(M.ARENA_R+0.7));
+    spr.scale.set(1.0,1.0,1.0);
+    floorGroup.add(spr);
+  }
+  for(const rr of [M.ARENA_R*0.5, M.ARENA_R*0.78]){
+    const seg=80, pts=[];
+    for(let i=0;i<=seg;i++){const a=i/seg*TAU; pts.push(new THREE.Vector3(Math.cos(a)*rr,0.004,Math.sin(a)*rr));}
+    floorGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), lineMat));
+  }
+}
+
+// ---------- boss (추상 발광 — 저작권 회피) ----------
+const bossGroup = new THREE.Group(); scene.add(bossGroup);
+{
+  const core = new THREE.Mesh(
+    new THREE.IcosahedronGeometry(M.BOSS_R*0.82, 1),
+    new THREE.MeshStandardMaterial({color:0x3a1405, emissive:0xff5a14, emissiveIntensity:1.4, roughness:0.4, metalness:0.3, flatShading:true})
+  );
+  core.position.y = M.BOSS_R*0.85; bossGroup.add(core);
+  const shell = new THREE.Mesh(
+    new THREE.IcosahedronGeometry(M.BOSS_R*1.02, 1),
+    new THREE.MeshBasicMaterial({color:0xff8a3a, wireframe:true, transparent:true, opacity:0.35})
+  );
+  shell.position.y = M.BOSS_R*0.85; bossGroup.add(shell);
+  // 바닥 받침 글로우
+  const halo = new THREE.Mesh(
+    new THREE.CircleGeometry(M.BOSS_R*1.1, 48),
+    new THREE.MeshBasicMaterial({color:0xff5a14, transparent:true, opacity:0.18})
+  );
+  halo.rotation.x=-Math.PI/2; halo.position.y=0.02; bossGroup.add(halo);
+  bossGroup.userData = {core, shell};
+}
+
+// ---------- 3겹 링 ----------
+const ringMeshes = [];
+for(let i=0;i<3;i++){
+  const m = new THREE.Mesh(
+    new THREE.TorusGeometry(M.RING_R[i], 0.07, 16, 120),
+    new THREE.MeshStandardMaterial({color:0x111111, emissive:0xffffff, emissiveIntensity:1.3, roughness:0.5, metalness:0.2})
+  );
+  m.rotation.x = -Math.PI/2; m.position.y = 0.12;
+  scene.add(m); ringMeshes.push(m);
+}
+
+// ---------- orb pool ----------
+const ORB_POOL = 8;
+const orbMeshes = [], orbSprites = [];
+const numTex = [makeTextTexture("1",{color:"#0a0a0a",font:"bold 88px sans-serif"}),
+                makeTextTexture("2",{color:"#0a0a0a",font:"bold 88px sans-serif"}),
+                makeTextTexture("3",{color:"#0a0a0a",font:"bold 88px sans-serif"})];
+for(let i=0;i<ORB_POOL;i++){
+  const m=new THREE.Mesh(
+    new THREE.SphereGeometry(M.ORB_R, 24, 18),
+    new THREE.MeshStandardMaterial({color:0x222222, emissive:0xffffff, emissiveIntensity:1.1, roughness:0.25, metalness:0.1})
+  );
+  m.visible=false; scene.add(m); orbMeshes.push(m);
+  const spr=new THREE.Sprite(new THREE.SpriteMaterial({map:numTex[0], transparent:true, depthTest:false, depthWrite:false}));
+  spr.scale.set(M.ORB_R*1.4,M.ORB_R*1.4,1); spr.visible=false; scene.add(spr); orbSprites.push(spr);
+}
+
+// ---------- beam ----------
+const beamGeo = new THREE.PlaneGeometry(M.ARENA_R, M.BEAM_W);
+beamGeo.translate(M.ARENA_R/2, 0, 0); beamGeo.rotateX(-Math.PI/2);
+const beamMesh = new THREE.Mesh(beamGeo, new THREE.MeshBasicMaterial({
+  color:0xffaf50, transparent:true, opacity:0.0, blending:THREE.AdditiveBlending, depthWrite:false, side:THREE.DoubleSide
+}));
+beamMesh.position.y = 0.06; beamMesh.visible=false; scene.add(beamMesh);
+// 충전 채움(밝은 코어) — prog 길이만큼
+const beamFillGeo = new THREE.PlaneGeometry(1, M.BEAM_W*0.42);
+beamFillGeo.translate(0.5,0,0); beamFillGeo.rotateX(-Math.PI/2);
+const beamFill = new THREE.Mesh(beamFillGeo, new THREE.MeshBasicMaterial({
+  color:0xffe6a0, transparent:true, opacity:0.0, blending:THREE.AdditiveBlending, depthWrite:false, side:THREE.DoubleSide
+}));
+beamFill.position.y=0.07; beamFill.visible=false; scene.add(beamFill);
+
+// ---------- player + aim line ----------
+const player = new THREE.Group(); scene.add(player);
+{
+  const body=new THREE.Mesh(
+    new THREE.SphereGeometry(M.PLAYER_R,20,16),
+    new THREE.MeshStandardMaterial({color:0xfff0d0, emissive:0xff7a18, emissiveIntensity:1.4, roughness:0.3})
+  );
+  body.position.y=M.PLAYER_R+0.05; player.add(body);
+  const ring=new THREE.Mesh(
+    new THREE.RingGeometry(M.PLAYER_R*1.4, M.PLAYER_R*1.7, 32),
+    new THREE.MeshBasicMaterial({color:0xff9a3a, transparent:true, opacity:0.7, side:THREE.DoubleSide})
+  );
+  ring.rotation.x=-Math.PI/2; ring.position.y=0.03; player.add(ring);
+}
+const aimGeo=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0.05,0),new THREE.Vector3(0,0.05,1)]);
+const aimLine=new THREE.Line(aimGeo, new THREE.LineBasicMaterial({color:0xffb45a, transparent:true, opacity:0.35}));
+scene.add(aimLine);
+
+// ---------- fx pool (flat rings: boom / hit / ring-vanish) ----------
+const FX_POOL = 14;
+const fxMeshes = [];
+for(let i=0;i<FX_POOL;i++){
+  const m=new THREE.Mesh(
+    new THREE.RingGeometry(0.86, 1.0, 48),
+    new THREE.MeshBasicMaterial({color:0xffffff, transparent:true, opacity:0, side:THREE.DoubleSide, blending:THREE.AdditiveBlending, depthWrite:false})
+  );
+  m.rotation.x=-Math.PI/2; m.visible=false; scene.add(m); fxMeshes.push(m);
+}
+
+// ---------- sound (2D WebAudio 재사용) ----------
+let actx=null;
+function tone(f,d=.08,t="square",v=.15){ if(!G.sound)return;
+  try{actx=actx||new (window.AudioContext||window.webkitAudioContext)();
+    const o=actx.createOscillator(),g=actx.createGain();o.type=t;o.frequency.value=f;
+    g.gain.value=v;o.connect(g);g.connect(actx.destination);const tt=actx.currentTime;o.start(tt);
+    g.gain.exponentialRampToValueAtTime(.0001,tt+d);o.stop(tt+d);}catch(e){}
+}
+function boom(){ if(!G.sound)return;
+  try{actx=actx||new (window.AudioContext||window.webkitAudioContext)();
+    const n=actx.sampleRate*.3,buf=actx.createBuffer(1,n,actx.sampleRate),dt=buf.getChannelData(0);
+    for(let i=0;i<n;i++)dt[i]=(Math.random()*2-1)*Math.pow(1-i/n,2);
+    const src=actx.createBufferSource();src.buffer=buf;const g=actx.createGain();g.gain.value=.32;
+    const f=actx.createBiquadFilter();f.type="lowpass";f.frequency.value=900;
+    src.connect(f);f.connect(g);g.connect(actx.destination);src.start();}catch(e){}
+}
+const sOk=()=>{tone(880,.07,"triangle",.16);setTimeout(()=>tone(1240,.08,"triangle",.14),55);};
+const sBad=()=>tone(140,.25,"sawtooth",.2);
+const sCast=()=>tone(360,.06,"sine",.09);
+// 로직 → 사운드 훅
+G.onBoom=boom; G.onCast=sCast; G.onHit=(ok)=>ok?sOk():sBad();
+
+// ---------- HUD refs ----------
+const $=s=>document.querySelector(s);
+const legendRows=[...document.querySelectorAll("#legend .row")];
+const expTxt=$("#expTxt"), nextTxt=$("#nextTxt"), wrongTxt=$("#wrongTxt"), over=$("#over");
+function updateHUD(){
+  // 범례
+  for(let i=0;i<3;i++){
+    const r=legendRows[i], c=COL[G.rings[i]], gone=G.ringGone[i];
+    r.querySelector(".dot").style.color=c.hex;
+    r.querySelector(".dot").style.background=c.hex;
+    r.querySelector(".lbl").textContent=`${i+1}번 구슬 = ${c.name}`;
+    r.classList.toggle("gone", gone);
+    r.querySelector(".chk").textContent=gone?"✓":"";
+  }
+  // 상태
+  const prim=G.cols.find(c=>c.alive&&c.orbs.some(o=>!o.entering)) || G.cols.find(c=>c.alive);
+  if(prim){
+    expTxt.textContent=`폭발 ${prim.exp}/7`;
+    const next=prim.orbs.find(o=>!o.entering)||prim.orbs[0];
+    if(next){ const left=Math.max(0,M.COMMIT[next.tr]-prim.exp);
+      nextTxt.textContent=`다음 진입: ${next.tr+1}번 구슬 (폭발 ${left}회 후)`;
+    } else nextTxt.textContent="진입 중…";
+  } else { expTxt.textContent="폭발 0/7"; nextTxt.textContent= G.running?"대기 중":"시작을 누르세요"; }
+  wrongTxt.innerHTML=`오답 <b>${G.wrong}</b> / 2`;
+}
+
+// ---------- sync: state → meshes ----------
+function lerpColor(out, hexA, hexB, t){ out.set(hexA); out.lerp(new THREE.Color(hexB), t); return out; }
+const _c = new THREE.Color();
+
+function syncBoss(t){
+  const ud=bossGroup.userData;
+  ud.core.rotation.y += 0.006; ud.core.rotation.x += 0.003;
+  ud.shell.rotation.y -= 0.004;
+  const pulse = 1.2 + 0.25*Math.sin(t*0.003);
+  ud.core.material.emissiveIntensity = pulse;
+  bossLight.intensity = 1.8 + 0.5*Math.sin(t*0.003);
+}
+function syncRings(){
+  for(let i=0;i<3;i++){
+    const m=ringMeshes[i];
+    m.visible = !G.ringGone[i];
+    m.material.emissive.set(COL[G.rings[i]].rgb);
+    m.material.color.set(COL[G.rings[i]].rgb).multiplyScalar(0.15);
+  }
+}
+function syncOrbs(){
+  let k=0;
+  for(const col of G.cols){ if(!col.alive)continue;
+    for(const o of col.orbs){
+      if(k>=ORB_POOL) break;
+      const m=orbMeshes[k], spr=orbSprites[k];
+      const rad=M.orbRad(col,o), ang=col.ang;
+      const sc=o.entering?THREE.MathUtils.lerp(1,0.5,Math.min(o.enterT/M.ENTER_DELAY,1)):1;
+      const x=Math.cos(ang)*rad, z=Math.sin(ang)*rad;
+      m.visible=true; m.position.set(x, M.ORB_R+0.06, z); m.scale.setScalar(sc);
+      m.material.emissive.set(COL[o.cidx].rgb);
+      m.material.color.set(COL[o.cidx].rgb).multiplyScalar(0.2);
+      m.material.emissiveIntensity = o.entering?1.6:1.1;
+      spr.visible=true; spr.material.map=numTex[o.tr]; spr.material.needsUpdate=true;
+      spr.position.set(x, M.ORB_R+0.06, z); spr.scale.setScalar(M.ORB_R*1.4*sc);
+      k++;
+    }
+  }
+  for(;k<ORB_POOL;k++){ orbMeshes[k].visible=false; orbSprites[k].visible=false; }
+}
+function syncBeam(){
+  const b=G.beam;
+  if(!b){ beamMesh.visible=false; beamFill.visible=false; return; }
+  const prog=Math.min(b.t/M.ARM_TIME,1);
+  beamMesh.visible=true; beamMesh.rotation.y=-b.ang;
+  // 밝은 주황 → 진빨강
+  lerpColor(beamMesh.material.color, 0xffaf50, 0xff1e0a, prog);
+  beamMesh.material.opacity = 0.22 + prog*0.6;
+  const pulse = prog>0.72 ? 1+0.12*Math.sin(b.t*38) : 1;
+  beamMesh.scale.z = pulse;
+  // 채움 코어 (prog 길이)
+  beamFill.visible=true; beamFill.rotation.y=-b.ang;
+  beamFill.scale.x = Math.max(0.001, prog*M.ARENA_R);
+  beamFill.material.opacity = 0.3 + prog*0.5;
+  lerpColor(beamFill.material.color, 0xffe6a0, 0xff7a2a, prog);
+}
+function syncPlayer(){
+  player.position.set(G.player.x, 0, G.player.z);
+  const pang=Math.atan2(G.player.z, G.player.x);
+  const ex=Math.cos(pang)*M.ARENA_R, ez=Math.sin(pang)*M.ARENA_R;
+  aimLine.geometry.setFromPoints([new THREE.Vector3(0,0.05,0), new THREE.Vector3(ex,0.05,ez)]);
+}
+function syncFx(){
+  let k=0;
+  for(const f of G.fx){
+    if(k>=FX_POOL) break;
+    const m=fxMeshes[k];
+    if(f.type==="boom"){
+      const p=f.t/0.5, R=M.ARENA_R*(0.25+p*0.75);
+      m.visible=true; m.position.set(0,0.09,0); m.scale.setScalar(R);
+      m.material.color.set(0xffc878); m.material.opacity=(1-p)*0.55;
+    } else if(f.type==="hit"){
+      const p=f.t/0.7, R=M.ORB_R*1.2 + p*2.2;
+      m.visible=true; m.position.set(f.x,0.1,f.z); m.scale.setScalar(R);
+      m.material.color.set(f.ok?0x27d97a:0xff4d5e); m.material.opacity=(1-p);
+    } else if(f.type==="ring"){
+      const p=Math.min(f.t/0.6,1), R=f.r*(1+p*0.18);
+      m.visible=true; m.position.set(0,0.13,0); m.scale.setScalar(R);
+      m.material.color.set(f.col); m.material.opacity=(1-p)*0.9;
+    } else continue;
+    k++;
+  }
+  for(;k<FX_POOL;k++) fxMeshes[k].visible=false;
+}
+
+// ---------- main loop ----------
+let last=performance.now();
+function frame(now){
+  const dt=Math.min(0.05,(now-last)/1000)||0; last=now;
+  if(G.running) M.update(dt);
+  syncBoss(now); syncRings(); syncOrbs(); syncBeam(); syncPlayer(); syncFx();
+  updateHUD();
+  if(controls.enabled) controls.update();
+  composer.render();
+  requestAnimationFrame(frame);
+}
+
+// ---------- controls / input ----------
+function gameOver(){ G.running=false; $("#startBtn").textContent="▶ 시작"; over.classList.add("show"); }
+G.onGameOver=gameOver;
+
+function start(){
+  if(G.running) return;
+  G.running=true; $("#startBtn").textContent="⏸ 중지";
+  over.classList.remove("show");
+  M.startRound();
+  if(actx && actx.state==="suspended") actx.resume();
+}
+function stop(){ G.running=false; $("#startBtn").textContent="▶ 시작"; }
+
+document.addEventListener("keydown",e=>{
+  if(e.key==="o"||e.key==="O"){ controls.enabled=!controls.enabled; return; }
+  if(!G.running) return;
+  if(["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"," "].includes(e.key)) e.preventDefault();
+  M.keys.add(e.key);
+});
+document.addEventListener("keyup",e=>M.keys.delete(e.key));
+
+// 포인터 → 바닥 레이캐스트로 캐릭터 이동
+const raycaster=new THREE.Raycaster();
+const floorPlane=new THREE.Plane(new THREE.Vector3(0,1,0),0);
+const ndc=new THREE.Vector2(), hit=new THREE.Vector3();
+let pdown=false;
+function pickFloor(e){
+  const r=renderer.domElement.getBoundingClientRect();
+  ndc.x=((e.clientX-r.left)/r.width)*2-1;
+  ndc.y=-((e.clientY-r.top)/r.height)*2+1;
+  raycaster.setFromCamera(ndc,camera);
+  if(raycaster.ray.intersectPlane(floorPlane,hit)){ G.player.x=hit.x; G.player.z=hit.z; }
+}
+renderer.domElement.addEventListener("pointerdown",e=>{
+  if(controls.enabled) return;
+  if(!G.running) return;
+  pdown=true; pickFloor(e);
+  try{renderer.domElement.setPointerCapture(e.pointerId);}catch(_){}
+});
+renderer.domElement.addEventListener("pointermove",e=>{ if(G.running&&pdown&&!controls.enabled) pickFloor(e); });
+addEventListener("pointerup",()=>pdown=false);
+
+$("#clock").addEventListener("change",e=>{
+  G.clock=+e.target.value;
+  if(G.running){ G.cols=[]; G.respawn=0; G.beam=null; M.placePlayerAtClock(G.clock); }
+});
+$("#startBtn").addEventListener("click",()=>G.running?stop():start());
+$("#resetBtn").addEventListener("click",()=>{ stop(); M.reset(); M.newRings(); over.classList.remove("show"); });
+$("#retryBtn").addEventListener("click",start);
+
+// ---------- init ----------
+M.newRings();
+M.placePlayerAtClock(G.clock);
+requestAnimationFrame(frame);
+
+// debug
+window.MUSPEL3D = {scene, camera, renderer, controls, M};
+</script>
+</body>
+</html>

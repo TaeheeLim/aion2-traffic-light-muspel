@@ -56,12 +56,18 @@
   #status .stlabel{font-size:10px;font-weight:800;color:var(--muted);margin-bottom:2px;}
   #status .stbar{width:150px;height:6px;border-radius:4px;background:#241405;border:1px solid var(--line);overflow:hidden;margin-left:auto;}
   #status .stfill{height:100%;width:100%;border-radius:3px;background:linear-gradient(90deg,#ff7a18,#ffc04d);box-shadow:0 0 6px rgba(255,140,40,.5) inset;transition:width .12s linear;}
-  #status .shwrap{margin-top:6px;}
-  #status .shpips{display:flex;gap:4px;justify-content:flex-end;}
-  #status .shpips span{width:16px;height:8px;border-radius:3px;background:#152433;border:1px solid var(--line);overflow:hidden;position:relative;}
-  #status .shpips span i{position:absolute;left:0;top:0;height:100%;width:0;display:block;background:linear-gradient(90deg,#4db5ff,#7ae0ff);}
-  #status .shpips span.ready{box-shadow:0 0 6px rgba(80,180,255,.6);}
-  #status .shpips span.ready i{width:100%;}
+  /* 방패막기 스킬 아이콘 (화면 하단) */
+  #shieldSkill{position:absolute;left:218px;bottom:14px;width:58px;height:58px;border-radius:13px;
+    display:flex;align-items:center;justify-content:center;
+    background:radial-gradient(circle at 38% 30%, #4db5ff, #0b1828 82%);
+    border:2px solid rgba(255,255,255,.28);box-shadow:0 4px 14px rgba(0,0,0,.5), inset 0 0 12px rgba(120,200,255,.22);
+    color:#fff;font-weight:800;pointer-events:none;transition:opacity .18s, box-shadow .18s;}
+  #shieldSkill.charged{box-shadow:0 4px 16px rgba(0,0,0,.5), 0 0 16px rgba(90,190,255,.6), inset 0 0 14px rgba(150,215,255,.35);}
+  #shieldSkill .ss-glyph{font-size:30px;line-height:1;filter:drop-shadow(0 1px 3px #000);}
+  #shieldSkill .ss-key{position:absolute;top:3px;left:7px;font-size:12px;text-shadow:0 1px 3px #000;letter-spacing:.3px;}
+  #shieldSkill .ss-count{position:absolute;right:5px;bottom:2px;font-size:17px;font-weight:900;text-shadow:0 1px 4px #000;z-index:2;}
+  #shieldSkill .ss-cd{position:absolute;inset:0;display:none;align-items:center;justify-content:center;
+    background:rgba(8,10,16,.55);border-radius:11px;color:#cfe9ff;font-size:22px;font-weight:900;text-shadow:0 1px 3px #000;}
 
   #hint{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);
     font-size:12px;color:var(--muted);font-weight:600;background:rgba(23,27,37,.6);
@@ -135,10 +141,6 @@
       <div class="stlabel">행동력</div>
       <div class="stbar"><div class="stfill" id="stFill"></div></div>
     </div>
-    <div class="shwrap">
-      <div class="stlabel">방패막기 (R)</div>
-      <div class="shpips"><span><i></i></span><span><i></i></span><span><i></i></span></div>
-    </div>
   </div>
 
   <div id="hint">Space/Enter 시작·중지 · P 리셋 &nbsp;|&nbsp; WASD 이동 · Shift 대쉬 · R 방패막기(3회·7초당 충전) &nbsp;|&nbsp; F1/F2/F3 물약 &nbsp;|&nbsp; 클릭→마우스 시점(ESC) · 휠 줌 &nbsp;|&nbsp; ⚠ 붉은 장판: 피하거나 R로 막기!</div>
@@ -148,6 +150,14 @@
     <div class="potion" style="--pc:#ff4d5e"><div class="pcd"></div><div class="pkey">F1</div><div class="pheal">+50%</div></div>
     <div class="potion" style="--pc:#27d97a"><div class="pcd"></div><div class="pkey">F2</div><div class="pheal">+30%</div></div>
     <div class="potion" style="--pc:#4db5ff"><div class="pcd"></div><div class="pkey">F3</div><div class="pheal">+30%</div></div>
+  </div>
+
+  <!-- 방패막기 스킬 아이콘: 남은 충전수(우하단 숫자) · 재충전 카운트다운 · 충전수에 따라 색 진하기 -->
+  <div id="shieldSkill">
+    <div class="ss-glyph">🛡️</div>
+    <div class="ss-key">R</div>
+    <div class="ss-cd" id="ssCd"></div>
+    <div class="ss-count" id="ssCount">3</div>
   </div>
 
   <div id="stick">
@@ -589,7 +599,7 @@ const $=s=>document.querySelector(s);
 const legendRows=[...document.querySelectorAll("#legend .row")];
 const expTxt=$("#expTxt"), nextTxt=$("#nextTxt"), wrongTxt=$("#wrongTxt"), over=$("#over");
 const hpLabel=$("#hpLabel"), hpFill=$("#hpFill"), stFill=$("#stFill");
-const shPips=[...document.querySelectorAll("#status .shpips span")];
+const shieldSkillEl=$("#shieldSkill"), ssCount=$("#ssCount"), ssCd=$("#ssCd");
 function updateHUD(){
   for(let i=0;i<3;i++){
     const r=legendRows[i], c=COL[G.rings[i]], gone=G.ringGone[i];
@@ -612,12 +622,15 @@ function updateHUD(){
   hpFill.className="hpfill"+(hpPct<=33?" low":(hpPct<=66?" mid":""));
   // 행동력 바
   stFill.style.width=Math.max(0,Math.min(100,stamina))+"%";
-  // 방패막기 충전(3칸): 가득 찬 칸은 ready, 충전 중인 칸은 비율만큼 채움
-  for(let i=0;i<shPips.length;i++){
-    const fillFrac=Math.max(0,Math.min(1,shieldCharges-i)); // i번째 칸의 충전 비율(0~1)
-    shPips[i].classList.toggle("ready", fillFrac>=1);
-    const bar=shPips[i].firstElementChild; if(bar) bar.style.width=(fillFrac*100)+"%";
-  }
+  // 방패막기 아이콘: 남은 충전수 / 재충전 카운트다운 / 충전수에 따라 점점 진해지는 색
+  const full=Math.floor(shieldCharges+1e-6);
+  ssCount.textContent=full;
+  shieldSkillEl.style.opacity=[0.28,0.56,0.80,1][Math.min(3,full)]; // 0 옅음 → 3 진함
+  shieldSkillEl.classList.toggle("charged", full>=SHIELD_MAX);
+  if(shieldCharges<SHIELD_MAX){ // 충전 중이면 다음 1개까지 남은 초(7→6→5…)
+    const toNext=(full+1-shieldCharges)*SHIELD_RECHARGE;
+    ssCd.style.display="flex"; ssCd.textContent=Math.max(1,Math.ceil(toNext));
+  } else ssCd.style.display="none";
 }
 
 // ---------- sync ----------

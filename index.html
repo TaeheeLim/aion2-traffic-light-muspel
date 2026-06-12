@@ -591,7 +591,29 @@ function boom(){ if(!G.sound)return;
     src.connect(f); f.connect(ng); ng.connect(actx.destination); src.start(t); src.stop(t+0.5);
   }catch(e){}
 }
-// 사운드는 '사용자 장판(기다란 빔)이 터질 때'만 — 그 외 효과음(락온/진입/대쉬/물약/보스 원형장판)은 무음
+// "챙!" — 방패막기 성공(차단) 금속성 효과음. 비조화 고음 부분음 + 짧은 밝은 노이즈 어택
+function clang(){ if(!G.sound)return;
+  try{
+    actx=actx||new (window.AudioContext||window.webkitAudioContext)();
+    const t=actx.currentTime;
+    const partials=[2100,3170,4650,6050]; // 정수배가 아닌 주파수 = 금속 질감
+    partials.forEach((f,i)=>{
+      const o=actx.createOscillator(), g=actx.createGain();
+      o.type="square"; o.frequency.value=f;
+      const v=0.11/(i+1);
+      g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(v,t+0.004);
+      g.gain.exponentialRampToValueAtTime(0.0001,t+0.20+i*0.04); // 고음일수록 짧게 → 링잉
+      o.connect(g); g.connect(actx.destination); o.start(t); o.stop(t+0.32);
+    });
+    const n=actx.sampleRate*0.05, buf=actx.createBuffer(1,n,actx.sampleRate), d=buf.getChannelData(0);
+    for(let i=0;i<n;i++) d[i]=(Math.random()*2-1)*Math.pow(1-i/n,1.5);
+    const src=actx.createBufferSource(); src.buffer=buf;
+    const f=actx.createBiquadFilter(); f.type="highpass"; f.frequency.value=3000; // 부딪히는 어택
+    const ng=actx.createGain(); ng.gain.setValueAtTime(0.2,t); ng.gain.exponentialRampToValueAtTime(0.0001,t+0.07);
+    src.connect(f); f.connect(ng); ng.connect(actx.destination); src.start(t); src.stop(t+0.07);
+  }catch(e){}
+}
+// 사운드: 사용자 장판이 터질 때(펑~) + 방패막기 차단 성공(챙!). 그 외(락온/진입/대쉬/물약/보스 원형장판)는 무음
 G.onBoom=boom; G.onCast=null; G.onHit=null;
 
 // ---------- HUD ----------
@@ -726,7 +748,7 @@ for(let i=0;i<AOE_POOL;i++){
   scene.add(grp); aoeVis.push({grp,warn,fill,edge});
 }
 function takeHit(){
-  if(shieldTimer>0){ hp=Math.min(100, hp+SHIELD_HEAL); blockFlash=0.3; return; } // 방패막기 성공 → 피해 무효 + 체력 20% 회복
+  if(shieldTimer>0){ hp=Math.min(100, hp+SHIELD_HEAL); blockFlash=0.3; clang(); return; } // 방패막기 성공 → 피해 무효 + 체력 20% 회복 + "챙!"
   hp=Math.max(0, hp-AOE_DMG); // 피격음 없음(장판 폭발음만 사용)
   if(hp<=0) endGame('전투 불능','체력이 모두 소진되었습니다.');
 }

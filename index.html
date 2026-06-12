@@ -56,6 +56,12 @@
   #status .stlabel{font-size:10px;font-weight:800;color:var(--muted);margin-bottom:2px;}
   #status .stbar{width:150px;height:6px;border-radius:4px;background:#241405;border:1px solid var(--line);overflow:hidden;margin-left:auto;}
   #status .stfill{height:100%;width:100%;border-radius:3px;background:linear-gradient(90deg,#ff7a18,#ffc04d);box-shadow:0 0 6px rgba(255,140,40,.5) inset;transition:width .12s linear;}
+  #status .shwrap{margin-top:6px;}
+  #status .shpips{display:flex;gap:4px;justify-content:flex-end;}
+  #status .shpips span{width:16px;height:8px;border-radius:3px;background:#152433;border:1px solid var(--line);overflow:hidden;position:relative;}
+  #status .shpips span i{position:absolute;left:0;top:0;height:100%;width:0;display:block;background:linear-gradient(90deg,#4db5ff,#7ae0ff);}
+  #status .shpips span.ready{box-shadow:0 0 6px rgba(80,180,255,.6);}
+  #status .shpips span.ready i{width:100%;}
 
   #hint{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);
     font-size:12px;color:var(--muted);font-weight:600;background:rgba(23,27,37,.6);
@@ -129,9 +135,13 @@
       <div class="stlabel">행동력</div>
       <div class="stbar"><div class="stfill" id="stFill"></div></div>
     </div>
+    <div class="shwrap">
+      <div class="stlabel">방패막기 (R)</div>
+      <div class="shpips"><span><i></i></span><span><i></i></span><span><i></i></span></div>
+    </div>
   </div>
 
-  <div id="hint">Space/Enter 시작·중지 · R 리셋 &nbsp;|&nbsp; WASD 이동 · Shift 대쉬 &nbsp;|&nbsp; F1/F2/F3 물약 &nbsp;|&nbsp; 클릭→마우스 시점(ESC) · 휠 줌 &nbsp;|&nbsp; ⚠ 붉은 장판 피하기!</div>
+  <div id="hint">Space/Enter 시작·중지 · P 리셋 &nbsp;|&nbsp; WASD 이동 · Shift 대쉬 · R 방패막기(3회·7초당 충전) &nbsp;|&nbsp; F1/F2/F3 물약 &nbsp;|&nbsp; 클릭→마우스 시점(ESC) · 휠 줌 &nbsp;|&nbsp; ⚠ 붉은 장판: 피하거나 R로 막기!</div>
 
   <!-- 좌하단 물약(포션) UI -->
   <div id="potions">
@@ -437,8 +447,19 @@ const knight=(()=>{
   sword.add(mk(new THREE.CylinderGeometry(0.035,0.035,0.16,8), dark,0,-0.1,0));
   sword.add(mk(new THREE.SphereGeometry(0.05,10,8), gold,0,-0.19,0));
 
+  // 방패 (전방 가드용 — 평소 숨김, 방패막기 시전 시 표시. 정면 +z를 막음)
+  const shield=new THREE.Group(); shield.position.set(0,1.05,0.46); g.add(shield);
+  const shBody=new THREE.Mesh(new THREE.CylinderGeometry(0.34,0.30,0.05,22), steel);
+  shBody.rotation.x=Math.PI/2; shield.add(shBody);                       // 디스크 면이 전방(±z)
+  shield.add(new THREE.Mesh(new THREE.TorusGeometry(0.33,0.04,10,28), gold)); // 테두리(XY평면=전방)
+  const shBoss=new THREE.Mesh(new THREE.SphereGeometry(0.08,14,12), gold); shBoss.position.z=0.045; shield.add(shBoss);
+  const shGlow=new THREE.Mesh(new THREE.RingGeometry(0.36,0.52,28),
+    new THREE.MeshBasicMaterial({color:0x7ae0ff, transparent:true, opacity:0, side:THREE.DoubleSide, blending:THREE.AdditiveBlending, depthWrite:false}));
+  shGlow.position.z=0.02; shield.add(shGlow);
+  shield.visible=false;
+
   g.traverse(o=>{ if(o.isMesh) o.castShadow=true; });
-  g.userData={torso,arms,legs,cape,plume};
+  g.userData={torso,arms,legs,cape,plume,shield,shGlow};
   return g;
 })();
 hero.add(knight);
@@ -490,6 +511,21 @@ function updateDashFx(dt){
 let heroMoving=false, heroSpeedFrac=0, walkPhase=0;
 function updateHeroAnim(dt){
   const ud=knight.userData;
+  // 방패막기 자세 — 정면을 향해 살짝 웅크리며 양팔로 방패를 들어올린다
+  if(shieldTimer>0){
+    ud.shield.visible=true;
+    ud.arms[0].rotation.x = THREE.MathUtils.lerp(ud.arms[0].rotation.x, -1.45, 0.4);
+    ud.arms[1].rotation.x = THREE.MathUtils.lerp(ud.arms[1].rotation.x, -1.15, 0.4);
+    ud.legs[0].rotation.x = THREE.MathUtils.lerp(ud.legs[0].rotation.x, 0.18, 0.4);
+    ud.legs[1].rotation.x = THREE.MathUtils.lerp(ud.legs[1].rotation.x, -0.18, 0.4);
+    ud.torso.position.y = THREE.MathUtils.lerp(ud.torso.position.y, 0.9, 0.4);
+    knight.rotation.x = THREE.MathUtils.lerp(knight.rotation.x, 0.14, 0.35);
+    // 막기 성공 시 잠깐 강하게, 평상시엔 은은하게 방패 글로우
+    ud.shGlow.material.opacity = THREE.MathUtils.lerp(ud.shGlow.material.opacity, blockFlash>0?1.0:0.4, 0.3);
+    walkPhase=0;
+    return;
+  }
+  ud.shield.visible=false; ud.shGlow.material.opacity=0;
   const freq = heroMoving ? (dashFx?15:9) : 0;
   walkPhase += freq*dt;
   const amp = heroMoving ? (dashFx?0.95:0.6) : 0;
@@ -553,6 +589,7 @@ const $=s=>document.querySelector(s);
 const legendRows=[...document.querySelectorAll("#legend .row")];
 const expTxt=$("#expTxt"), nextTxt=$("#nextTxt"), wrongTxt=$("#wrongTxt"), over=$("#over");
 const hpLabel=$("#hpLabel"), hpFill=$("#hpFill"), stFill=$("#stFill");
+const shPips=[...document.querySelectorAll("#status .shpips span")];
 function updateHUD(){
   for(let i=0;i<3;i++){
     const r=legendRows[i], c=COL[G.rings[i]], gone=G.ringGone[i];
@@ -575,6 +612,12 @@ function updateHUD(){
   hpFill.className="hpfill"+(hpPct<=33?" low":(hpPct<=66?" mid":""));
   // 행동력 바
   stFill.style.width=Math.max(0,Math.min(100,stamina))+"%";
+  // 방패막기 충전(3칸): 가득 찬 칸은 ready, 충전 중인 칸은 비율만큼 채움
+  for(let i=0;i<shPips.length;i++){
+    const fillFrac=Math.max(0,Math.min(1,shieldCharges-i)); // i번째 칸의 충전 비율(0~1)
+    shPips[i].classList.toggle("ready", fillFrac>=1);
+    const bar=shPips[i].firstElementChild; if(bar) bar.style.width=(fillFrac*100)+"%";
+  }
 }
 
 // ---------- sync ----------
@@ -670,6 +713,7 @@ for(let i=0;i<AOE_POOL;i++){
   scene.add(grp); aoeVis.push({grp,warn,fill,edge});
 }
 function takeHit(){
+  if(shieldTimer>0){ hp=Math.min(100, hp+SHIELD_HEAL); blockFlash=0.3; return; } // 방패막기 성공 → 피해 무효 + 체력 20% 회복
   hp=Math.max(0, hp-AOE_DMG); // 피격음 없음(장판 폭발음만 사용)
   if(hp<=0) endGame('전투 불능','체력이 모두 소진되었습니다.');
 }
@@ -678,7 +722,7 @@ function updateAoe(dt){
     aoeTimer-=dt;
     if(aoeTimer<=0 && aoes.length<AOE_POOL){
       aoes.push({x:G.player.x, z:G.player.z, t:0, hit:false});
-      aoeTimer=2.0+Math.random()*2.4; // 경고음 없음
+      aoeTimer=2.0+Math.random()*2.4; // 다음 장판까지 2.0~4.4초 무작위 (경고음 없음)
     }
   }
   for(const a of aoes){
@@ -711,7 +755,7 @@ function syncAoe(){
     }
   }
 }
-function resetAoe(){ aoes.length=0; hp=100; potionCd=[0,0,0]; aoeTimer=2.2; stamina=STAMINA_MAX; }
+function resetAoe(){ aoes.length=0; hp=100; potionCd=[0,0,0]; aoeTimer=2.2; stamina=STAMINA_MAX; shieldTimer=0; shieldCharges=SHIELD_MAX; blockFlash=0; }
 
 // ---------- 물약(포션): F1=+50%, F2/F3=+30%, 쿨다운 10초 ----------
 const POTIONS=[{heal:50},{heal:30},{heal:30}];
@@ -729,6 +773,19 @@ function updatePotions(dt){
     if(potionCd[i]>0){ cd.style.display='flex'; cd.style.height=(potionCd[i]/POTION_CD*100)+'%'; cd.textContent=Math.ceil(potionCd[i]); el2.classList.add('cooling'); }
     else { cd.style.display='none'; el2.classList.remove('cooling'); }
   }
+}
+
+// ---------- 방패막기 스킬 (R): 1.5초 유지, 그 동안 원형 장판 폭발을 막으면 피해 무효 + 체력 20% 회복 ----------
+const SHIELD_DURATION=1.5, SHIELD_HEAL=20, SHIELD_MAX=3, SHIELD_RECHARGE=7.0; // 최대 3충전, 1충전당 7초 재충전
+let shieldTimer=0, shieldCharges=SHIELD_MAX, blockFlash=0;
+function tryShield(){
+  if(!G.running || shieldTimer>0 || shieldCharges<1) return; // 충전 1 이상 + 시전 중 아님
+  shieldCharges-=1; shieldTimer=SHIELD_DURATION;             // 1 차감, 1.5초 유지
+}
+function updateShield(dt){
+  if(shieldTimer>0) shieldTimer=Math.max(0, shieldTimer-dt);
+  if(shieldCharges<SHIELD_MAX) shieldCharges=Math.min(SHIELD_MAX, shieldCharges+dt/SHIELD_RECHARGE); // 7초당 1 재충전
+  if(blockFlash>0)  blockFlash=Math.max(0, blockFlash-dt);
 }
 
 // ---------- 3인칭 카메라 (캐릭터 궤도) ----------
@@ -837,7 +894,8 @@ addEventListener("keydown",e=>{
   if(e.code==="F1"||e.code==="F2"||e.code==="F3"){ e.preventDefault(); if(!e.repeat) usePotion(e.code==="F1"?0:e.code==="F2"?1:2); }
   if(!e.repeat){
     if(e.code==="Space"||e.code==="Enter"){ e.preventDefault(); G.running?stop():start(); }
-    else if(e.code==="KeyR"){ stop(); M.reset(); M.newRings(); resetAoe(); over.classList.remove("show"); }
+    else if(e.code==="KeyR"){ tryShield(); } // R = 방패막기
+    else if(e.code==="KeyP"){ stop(); M.reset(); M.newRings(); resetAoe(); over.classList.remove("show"); } // P = 리셋
   }
   M.keys.add(e.code);   // 물리 키 코드로 저장(Shift 대소문자 문제 회피)
 });
@@ -948,7 +1006,7 @@ function frame(now){
     applyMovement(dt);
     if(G.running) M.update(dt);   // 내부 이동은 externalMove로 skip, 클램프+게임 진행만
     else clampPlayer();
-    updateHeroAnim(dt); updateEmbers(dt); updateAoe(dt); updateDashFx(dt); updatePotions(dt);
+    updateHeroAnim(dt); updateEmbers(dt); updateAoe(dt); updateDashFx(dt); updatePotions(dt); updateShield(dt);
     syncBoss(now); syncRings(); syncOrbs(); syncBeam(); syncFx(); syncAoe(); syncHero(); updateHeadHp();
     updateCamera(); updateHUD();
     composer.render();
@@ -964,9 +1022,9 @@ cam.yaw=Math.atan2(G.player.x,G.player.z);
 requestAnimationFrame(frame);
 
 window.MUSPEL_RPG = {scene, camera, renderer, composer, cam, M, tick:()=>frame(performance.now()),
-  step:(dt,n)=>{ for(let i=0;i<(n||1);i++){ applyMovement(dt); if(G.running)M.update(dt); else clampPlayer(); updateHeroAnim(dt); updateAoe(dt); updateDashFx(dt); updatePotions(dt); } },
-  tryDash:()=>tryDash(),
-  dbg:()=>({hp:+hp.toFixed(1), stamina:+stamina.toFixed(1), potionCd:potionCd.map(v=>+v.toFixed(2)), aoeTimer:+aoeTimer.toFixed(2), running:G.running, pointerLocked, dashFx, heroSpeedFrac,
+  step:(dt,n)=>{ for(let i=0;i<(n||1);i++){ applyMovement(dt); if(G.running)M.update(dt); else clampPlayer(); updateHeroAnim(dt); updateAoe(dt); updateDashFx(dt); updatePotions(dt); updateShield(dt); } },
+  tryDash:()=>tryDash(), tryShield:()=>tryShield(),
+  dbg:()=>({hp:+hp.toFixed(1), stamina:+stamina.toFixed(1), shieldTimer:+shieldTimer.toFixed(2), shieldCharges:+shieldCharges.toFixed(2), potionCd:potionCd.map(v=>+v.toFixed(2)), aoeTimer:+aoeTimer.toFixed(2), running:G.running, pointerLocked, dashFx, heroSpeedFrac,
     dashTimer:+dashTimer.toFixed(3), dashCooldown:+dashCooldown.toFixed(3),
     player:{x:+G.player.x.toFixed(2),z:+G.player.z.toFixed(2)},
     aoes:aoes.map(a=>({t:+a.t.toFixed(2),hit:a.hit,d:+Math.hypot(G.player.x-a.x,G.player.z-a.z).toFixed(2)}))})};

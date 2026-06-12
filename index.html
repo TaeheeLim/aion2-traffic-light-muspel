@@ -449,21 +449,29 @@ foot.rotation.x=-Math.PI/2; foot.position.y=0.05; hero.add(foot);
 
 // 머리 위 체력바(빨강) — 카메라를 향하는 스프라이트(캔버스로 그려 실시간 갱신)
 function rr(ctx,x,y,w,h,r){ r=Math.min(r,h/2,w/2); ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
-const hpCanvas=document.createElement('canvas'); hpCanvas.width=140; hpCanvas.height=30;
+const hpCanvas=document.createElement('canvas'); hpCanvas.width=140; hpCanvas.height=40; // 체력바 + 행동력 게이지
 const hpCtx=hpCanvas.getContext('2d');
 const hpTex=new THREE.CanvasTexture(hpCanvas);
 const hpSprite=new THREE.Sprite(new THREE.SpriteMaterial({map:hpTex, transparent:true, depthTest:false, depthWrite:false}));
-hpSprite.scale.set(1.7,0.36,1); hpSprite.position.set(0,2.35,0); hero.add(hpSprite);
-let hpDrawn=-1;
+hpSprite.scale.set(1.7, 1.7*40/140, 1); hpSprite.position.set(0,2.42,0); hero.add(hpSprite); // 종횡비 유지
+let hpDrawn=-1, stDrawn=-1;
 function updateHeadHp(){
-  if(Math.round(hp)===hpDrawn) return; hpDrawn=Math.round(hp);
-  const w=hpCanvas.width, h=hpCanvas.height, ctx=hpCtx;
-  ctx.clearRect(0,0,w,h);
-  ctx.fillStyle='rgba(18,5,6,0.85)'; rr(ctx,1,1,w-2,h-2,8); ctx.fill();
-  const fw=(w-8)*Math.max(0,Math.min(100,hp))/100;
-  if(fw>0){ ctx.fillStyle='#ff2230'; rr(ctx,4,4,fw,h-8,5); ctx.fill();
-    ctx.fillStyle='rgba(255,150,150,0.5)'; rr(ctx,4,4,fw,(h-8)*0.45,5); ctx.fill(); }
-  ctx.strokeStyle='rgba(255,255,255,0.3)'; ctx.lineWidth=2; rr(ctx,1,1,w-2,h-2,8); ctx.stroke();
+  const hpR=Math.round(hp), stR=Math.round(stamina);
+  if(hpR===hpDrawn && stR===stDrawn) return; hpDrawn=hpR; stDrawn=stR;
+  const w=hpCanvas.width, ctx=hpCtx;
+  ctx.clearRect(0,0,w,hpCanvas.height);
+  // ----- 체력 바 (상단) -----
+  ctx.fillStyle='rgba(18,5,6,0.85)'; rr(ctx,1,1,w-2,24,8); ctx.fill();
+  const hpw=(w-8)*Math.max(0,Math.min(100,hp))/100;
+  if(hpw>0){ ctx.fillStyle='#ff2230'; rr(ctx,4,4,hpw,18,5); ctx.fill();
+    ctx.fillStyle='rgba(255,150,150,0.5)'; rr(ctx,4,4,hpw,9,5); ctx.fill(); }
+  ctx.strokeStyle='rgba(255,255,255,0.3)'; ctx.lineWidth=2; rr(ctx,1,1,w-2,24,8); ctx.stroke();
+  // ----- 행동력 게이지 (하단, 얇은 주황) -----
+  ctx.fillStyle='rgba(20,10,2,0.85)'; rr(ctx,1,28,w-2,10,5); ctx.fill();
+  const stw=(w-8)*Math.max(0,Math.min(100,stamina))/100;
+  if(stw>0){ ctx.fillStyle='#ff8a1e'; rr(ctx,4,30,stw,6,3); ctx.fill();
+    ctx.fillStyle='rgba(255,210,120,0.6)'; rr(ctx,4,30,stw,3,3); ctx.fill(); }
+  ctx.strokeStyle='rgba(255,255,255,0.25)'; ctx.lineWidth=1.5; rr(ctx,1,28,w-2,10,5); ctx.stroke();
   hpTex.needsUpdate=true;
 }
 

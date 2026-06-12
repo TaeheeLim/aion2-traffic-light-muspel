@@ -98,15 +98,19 @@ window.MUSPEL = (function(){
     }
     return cols;
   }
-  // 난이도/다양성 점수: 색을 바꿔야 하는 구슬 수(주) + 등장 색 가짓수(보조)
-  function laneDifficulty(cols){
-    let changers=0; const colorset=new Set();
-    for(const col of cols) for(const o of col.orbs){
-      colorset.add(o.cidx);
-      const need=(((G.rings[o.tr]-o.cidx)%3)+3)%3;
-      if(need!==0) changers++;
+  // 진짜 난이도 = 풀이에 '반드시 필요한 최소 장판 횟수'(7회 중). 높을수록 빔을 거의 못 버려서 어렵다.
+  // 빔 1회는 한 줄의 (진입 전) 구슬 전부를 +1 하므로, 같은 줄 구슬이 같은 보정량이면 한 번에 처리돼 쉽다.
+  // 단계별 필요 횟수: a(1~3폭발)=n0, b(4~5폭발)=(n1-n0), c(6~7폭발)=(n2-n1), 각 mod3.
+  //   - 한 줄이 [+1,+1,+1] 같으면 a=1,b=0,c=0 → 1회로 끝(쉬움)
+  //   - 두 줄이 대칭(같은 색)이면 b,c가 양쪽 동일 → 단계 정원(3/2/2)에 막혀 작게 강제됨(쉬움)
+  function laneMinHits(cols){
+    let total=0;
+    for(const col of cols){
+      const n=col.orbs.map(o=>(((G.rings[o.tr]-o.cidx)%3)+3)%3);
+      const a=n[0], b=(((n[1]-n[0])%3)+3)%3, c=(((n[2]-n[1])%3)+3)%3;
+      total+=a+b+c;
     }
-    return changers*10 + colorset.size;
+    return total;
   }
   function spawnLane(clock){
     const base=clockAngle(clock);
@@ -114,13 +118,17 @@ window.MUSPEL = (function(){
     const id=G.laneSeq++;
     let best=null;
     if(cnt===2){
-      // 2줄: 7회 폭발로 항상 풀 수 있는(laneSolvable) 후보들 중 가장 어렵고 색이 다양한 조합 채택
-      let bestScore=-1;
-      for(let i=0;i<48;i++){
+      // 풀이 보장되는 후보들 중 '필요 장판 수'가 가장 많은(=가장 빡빡한) 등급을 모아 그 중 무작위 채택
+      const pool=[];
+      for(let i=0;i<64;i++){
         const cand=makeCandidate(clock, base, cnt, id);
-        if(!laneSolvable(cand)) continue;          // 풀이 보장 필수
-        const sc=laneDifficulty(cand)+rand(3);      // 동점 시 약간의 무작위로 다양성 유지
-        if(sc>bestScore){ bestScore=sc; best=cand; }
+        if(!laneSolvable(cand)) continue;          // 7폭발 안에 풀이 가능 필수
+        pool.push({cand, score:laneMinHits(cand)});
+      }
+      if(pool.length){
+        let mx=-1; for(const p of pool) if(p.score>mx) mx=p.score;
+        const top=pool.filter(p=>p.score>=mx);     // 가장 어려운 등급(보통 빔 6~7개 강제)
+        best=top[rand(top.length)].cand;            // 그 중 무작위로 골라 다양성 유지
       }
     }
     if(!best){

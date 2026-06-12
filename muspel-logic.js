@@ -22,7 +22,7 @@ window.MUSPEL = (function(){
   const ARRIVAL = BOSS_R+0.25;                            // 진입 판정 반지름
   const ORB_R   = 0.32;
   const PLAYER_R= 0.26;
-  const BEAM_W  = 0.7;
+  const BEAM_W  = 1.2;   // 일자 장판 폭(시각 + 닿음 판정에 함께 사용). 0.7→1.2로 확대
 
   // ---- 게임 상수 (2D에서 그대로) ----
   const DOUBLE_CLOCKS=new Set([1,4,7,10]);

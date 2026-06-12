@@ -16,7 +16,7 @@ window.MUSPEL = (function(){
   ];
 
   // ---- 월드 치수 (월드 유닛) ----
-  const ARENA_R = 50;
+  const ARENA_R = 34;   // 구슬이 보스까지 지나는 거리(맵 크기) — 50→34로 축소
   const BOSS_R  = 4.0;
   const RING_R  = [BOSS_R+3.5, BOSS_R+2.2, BOSS_R+1.0]; // 바깥/중간/안쪽 (크게·분리)
   const ARRIVAL = BOSS_R+0.25;                            // 진입 판정 반지름
@@ -27,7 +27,7 @@ window.MUSPEL = (function(){
   // ---- 게임 상수 (2D에서 그대로) ----
   const DOUBLE_CLOCKS=new Set([1,4,7,10]);
   const COMMIT=[3,5,7];     // 1·2·3번 구슬 진입 누적 폭발 횟수
-  const ENTER_DELAY=1.0;    // 색 확정 후 진입까지 지연(초)
+  const ENTER_DELAY=1.5;    // 색 확정(임계 폭발 도달) 후 구슬이 사라지기까지 지연(초)
   const ARM_TIME=3.0;       // 장판 생성→폭발 주기 = 전체 속도
   const LOCK_FRAC=0.85;     // 장판이 캐릭터에서 분리·고정되는 충전 비율
   const BEAM_TOL=0.22;      // 장판 자석 정렬 허용각
@@ -83,22 +83,47 @@ window.MUSPEL = (function(){
     }
     return false;
   }
+  function makeCandidate(clock, base, cnt, id){
+    const cols=[];
+    for(let c=0;c<cnt;c++){
+      const ang=base+(cnt===1?0:(c===0?-COL_OFFSET:COL_OFFSET));
+      let cc; do{ cc=[rand(3),rand(3),rand(3)]; }while(cc[0]===cc[1]&&cc[1]===cc[2]); // 3개 모두 같은 색 금지
+      const orbs=cc.map((v,i)=>({cidx:v,tr:i,committed:false,entering:false,enterT:0}));
+      cols.push({laneId:id, clock, ang, exp:0, orbs, alive:true});
+    }
+    return cols;
+  }
+  // 난이도/다양성 점수: 색을 바꿔야 하는 구슬 수(주) + 등장 색 가짓수(보조)
+  function laneDifficulty(cols){
+    let changers=0; const colorset=new Set();
+    for(const col of cols) for(const o of col.orbs){
+      colorset.add(o.cidx);
+      const need=(((G.rings[o.tr]-o.cidx)%3)+3)%3;
+      if(need!==0) changers++;
+    }
+    return changers*10 + colorset.size;
+  }
   function spawnLane(clock){
     const base=clockAngle(clock);
     const cnt=DOUBLE_CLOCKS.has(((clock%12)+12)%12||12)?2:1;
     const id=G.laneSeq++;
-    let cols, tries=0;
-    do{
-      cols=[];
-      for(let c=0;c<cnt;c++){
-        const ang=base+(cnt===1?0:(c===0?-COL_OFFSET:COL_OFFSET));
-        let cc; do{ cc=[rand(3),rand(3),rand(3)]; }while(cc[0]===cc[1]&&cc[1]===cc[2]); // 3개 모두 같은 색 금지
-        const orbs=cc.map((v,i)=>({cidx:v,tr:i,committed:false,entering:false,enterT:0}));
-        cols.push({laneId:id, clock, ang, exp:0, orbs, alive:true});
+    let best=null;
+    if(cnt===2){
+      // 2줄: 7회 폭발로 항상 풀 수 있는(laneSolvable) 후보들 중 가장 어렵고 색이 다양한 조합 채택
+      let bestScore=-1;
+      for(let i=0;i<48;i++){
+        const cand=makeCandidate(clock, base, cnt, id);
+        if(!laneSolvable(cand)) continue;          // 풀이 보장 필수
+        const sc=laneDifficulty(cand)+rand(3);      // 동점 시 약간의 무작위로 다양성 유지
+        if(sc>bestScore){ bestScore=sc; best=cand; }
       }
-      tries++;
-    }while(!laneSolvable(cols) && tries<400);
-    cols.forEach(c=>G.cols.push(c));
+    }
+    if(!best){
+      // 1줄(또는 2줄 후보 전부 실패한 드문 경우): 풀이 가능한 첫 조합
+      let tries=0;
+      do{ best=makeCandidate(clock, base, cnt, id); tries++; }while(!laneSolvable(best) && tries<400);
+    }
+    best.forEach(c=>G.cols.push(c));
   }
   function laneCount(){ const s=new Set(); G.cols.forEach(c=>{if(c.alive)s.add(c.laneId);}); return s.size; }
 

@@ -52,6 +52,10 @@
     background:linear-gradient(90deg,#27d97a,#9be86a 60%,#ffd23f);transition:width .25s, background .25s;}
   #status .hpfill.mid{background:linear-gradient(90deg,#ffb454,#ffd23f);}
   #status .hpfill.low{background:linear-gradient(90deg,#ff4d5e,#ff7a18);}
+  #status .stwrap{margin-top:6px;}
+  #status .stlabel{font-size:10px;font-weight:800;color:var(--muted);margin-bottom:2px;}
+  #status .stbar{width:150px;height:6px;border-radius:4px;background:#241405;border:1px solid var(--line);overflow:hidden;margin-left:auto;}
+  #status .stfill{height:100%;width:100%;border-radius:3px;background:linear-gradient(90deg,#ff7a18,#ffc04d);box-shadow:0 0 6px rgba(255,140,40,.5) inset;transition:width .12s linear;}
 
   #hint{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);
     font-size:12px;color:var(--muted);font-weight:600;background:rgba(23,27,37,.6);
@@ -121,6 +125,10 @@
       <div class="hplabel" id="hpLabel">체력 100%</div>
       <div class="hpbar"><div class="hpfill" id="hpFill"></div></div>
     </div>
+    <div class="stwrap">
+      <div class="stlabel">행동력</div>
+      <div class="stbar"><div class="stfill" id="stFill"></div></div>
+    </div>
   </div>
 
   <div id="hint">Space/Enter 시작·중지 · R 리셋 &nbsp;|&nbsp; WASD 이동 · Shift 대쉬 &nbsp;|&nbsp; F1/F2/F3 물약 &nbsp;|&nbsp; 클릭→마우스 시점(ESC) · 휠 줌 &nbsp;|&nbsp; ⚠ 붉은 장판 피하기!</div>
@@ -145,7 +153,7 @@
 </div>
 
 <!-- 공용 게임 로직 -->
-<script src="muspel-logic.js?v=10"></script>
+<script src="muspel-logic.js?v=11"></script>
 
 <!-- =================== RPG 3인칭 렌더 (Three.js) =================== -->
 <script type="module">
@@ -525,7 +533,7 @@ G.onBoom=boom; G.onCast=sCast; G.onHit=(ok)=>ok?sOk():sBad();
 const $=s=>document.querySelector(s);
 const legendRows=[...document.querySelectorAll("#legend .row")];
 const expTxt=$("#expTxt"), nextTxt=$("#nextTxt"), wrongTxt=$("#wrongTxt"), over=$("#over");
-const hpLabel=$("#hpLabel"), hpFill=$("#hpFill");
+const hpLabel=$("#hpLabel"), hpFill=$("#hpFill"), stFill=$("#stFill");
 function updateHUD(){
   for(let i=0;i<3;i++){
     const r=legendRows[i], c=COL[G.rings[i]], gone=G.ringGone[i];
@@ -546,6 +554,8 @@ function updateHUD(){
   hpLabel.textContent=`체력 ${hpPct}%`;
   hpFill.style.width=hpPct+"%";
   hpFill.className="hpfill"+(hpPct<=33?" low":(hpPct<=66?" mid":""));
+  // 행동력 바
+  stFill.style.width=Math.max(0,Math.min(100,stamina))+"%";
 }
 
 // ---------- sync ----------
@@ -680,7 +690,7 @@ function syncAoe(){
     }
   }
 }
-function resetAoe(){ aoes.length=0; hp=100; potionCd=[0,0,0]; aoeTimer=2.2; }
+function resetAoe(){ aoes.length=0; hp=100; potionCd=[0,0,0]; aoeTimer=2.2; stamina=STAMINA_MAX; }
 
 // ---------- 물약(포션): F1=+50%, F2/F3=+30%, 쿨다운 10초 ----------
 const POTIONS=[{heal:50},{heal:30},{heal:30}];
@@ -731,17 +741,21 @@ function readKeyMove(){
 let heroFace=Math.atan2(G.player.x,G.player.z);
 let dashFx=false;
 // 순간 대쉬(블링크): Shift를 누르는 "순간" 전방으로 짧고 빠르게 이동, 쿨다운 후 재사용
-const DASH_TIME=0.2, DASH_DIST=5.0, DASH_CD=0.0; // CD=0 → 대쉬가 끝나면 즉시 연속 대쉬 가능
+const DASH_TIME=0.2, DASH_DIST=3.0, DASH_CD=0.0; // 대쉬 거리 단축(5.0→3.0). CD=0 → 행동력만 있으면 즉시 연속 대쉬
 const DASH_SPEED=DASH_DIST/DASH_TIME;
 let dashTimer=0, dashCooldown=0, dashDirX=0, dashDirZ=1;
+// 행동력(스태미나): 대쉬 1회당 DASH_COST 소모. 꽉 찬 상태(=MAX)면 연속 5회 대쉬 가능. 대쉬/쿨다운 중이 아니면 자연 회복.
+const STAMINA_MAX=100, DASH_COST=20, STAMINA_REGEN=16; // MAX/COST=5회, 회복 16/초(완충 ~6초)
+let stamina=STAMINA_MAX;
 function tryDash(){
-  if(dashTimer>0 || dashCooldown>0) return; // 진행중이거나 쿨다운이면 무시
+  if(dashTimer>0 || dashCooldown>0 || stamina<DASH_COST) return; // 진행중·쿨다운·행동력 부족이면 무시
   let f=0,r=0; const km=readKeyMove(); f=km.f; r=km.r; if(stickActive){ f+=-joy.y; r+=joy.x; }
   let dx,dz;
   if(Math.hypot(f,r)>0.01){ const b=camBasis(); dx=b.fx*f+b.rx*r; dz=b.fz*f+b.rz*r; } // 입력 방향
   else { dx=Math.sin(heroFace); dz=Math.cos(heroFace); }                              // 없으면 바라보는 방향
   const l=Math.hypot(dx,dz)||1; dashDirX=dx/l; dashDirZ=dz/l;
   dashTimer=DASH_TIME; dashCooldown=DASH_TIME+DASH_CD;
+  stamina=Math.max(0, stamina-DASH_COST); // 행동력 소모
   heroFace=Math.atan2(dashDirX,dashDirZ);
   // 시작 충격파 + 잔상 즉시 시작
   dashBurstT=0; dashBurstX=G.player.x; dashBurstZ=G.player.z; dashBurst.visible=true;
@@ -749,6 +763,8 @@ function tryDash(){
 }
 function applyMovement(dt){
   if(dashCooldown>0) dashCooldown-=dt;
+  // 행동력 자연 회복(대쉬/쿨다운 중이 아닐 때만 → 연속 대쉬는 정확히 5회까지)
+  if(dashTimer<=0 && dashCooldown<=0 && stamina<STAMINA_MAX) stamina=Math.min(STAMINA_MAX, stamina+STAMINA_REGEN*dt);
   heroMoving=false; heroSpeedFrac=0; dashFx=false;
   // 대쉬 중: 일반 입력 무시하고 순간이동
   if(dashTimer>0){
@@ -930,7 +946,7 @@ requestAnimationFrame(frame);
 window.MUSPEL_RPG = {scene, camera, renderer, composer, cam, M, tick:()=>frame(performance.now()),
   step:(dt,n)=>{ for(let i=0;i<(n||1);i++){ applyMovement(dt); if(G.running)M.update(dt); else clampPlayer(); updateHeroAnim(dt); updateAoe(dt); updateDashFx(dt); updatePotions(dt); } },
   tryDash:()=>tryDash(),
-  dbg:()=>({hp:+hp.toFixed(1), potionCd:potionCd.map(v=>+v.toFixed(2)), aoeTimer:+aoeTimer.toFixed(2), running:G.running, pointerLocked, dashFx, heroSpeedFrac,
+  dbg:()=>({hp:+hp.toFixed(1), stamina:+stamina.toFixed(1), potionCd:potionCd.map(v=>+v.toFixed(2)), aoeTimer:+aoeTimer.toFixed(2), running:G.running, pointerLocked, dashFx, heroSpeedFrac,
     dashTimer:+dashTimer.toFixed(3), dashCooldown:+dashCooldown.toFixed(3),
     player:{x:+G.player.x.toFixed(2),z:+G.player.z.toFixed(2)},
     aoes:aoes.map(a=>({t:+a.t.toFixed(2),hit:a.hit,d:+Math.hypot(G.player.x-a.x,G.player.z-a.z).toFixed(2)}))})};

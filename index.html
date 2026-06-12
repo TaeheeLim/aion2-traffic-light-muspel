@@ -153,7 +153,7 @@
 </div>
 
 <!-- 공용 게임 로직 -->
-<script src="muspel-logic.js?v=11"></script>
+<script src="muspel-logic.js?v=13"></script>
 
 <!-- =================== RPG 3인칭 렌더 (Three.js) =================== -->
 <script type="module">
@@ -524,18 +524,29 @@ function tone(f,d=.08,t="square",v=.15){ if(!G.sound)return;
     g.gain.value=v;o.connect(g);g.connect(actx.destination);const tt=actx.currentTime;o.start(tt);
     g.gain.exponentialRampToValueAtTime(.0001,tt+d);o.stop(tt+d);}catch(e){}
 }
+// "펑~" — 장판 폭발음. 저음 펀치(몸통) + 둔탁한 노이즈 버스트(터짐 질감)
 function boom(){ if(!G.sound)return;
-  try{actx=actx||new (window.AudioContext||window.webkitAudioContext)();
-    const n=actx.sampleRate*.3,buf=actx.createBuffer(1,n,actx.sampleRate),dt=buf.getChannelData(0);
-    for(let i=0;i<n;i++)dt[i]=(Math.random()*2-1)*Math.pow(1-i/n,2);
-    const src=actx.createBufferSource();src.buffer=buf;const g=actx.createGain();g.gain.value=.32;
-    const f=actx.createBiquadFilter();f.type="lowpass";f.frequency.value=900;
-    src.connect(f);f.connect(g);g.connect(actx.destination);src.start();}catch(e){}
+  try{
+    actx=actx||new (window.AudioContext||window.webkitAudioContext)();
+    const t=actx.currentTime;
+    // 1) 저음 펀치 — 주파수가 빠르게 하강하며 "펑"의 몸통을 만든다
+    const o=actx.createOscillator(), og=actx.createGain();
+    o.type="sine"; o.frequency.setValueAtTime(170,t); o.frequency.exponentialRampToValueAtTime(40,t+0.38);
+    og.gain.setValueAtTime(0.0001,t); og.gain.exponentialRampToValueAtTime(0.7,t+0.015);
+    og.gain.exponentialRampToValueAtTime(0.0001,t+0.55);
+    o.connect(og); og.connect(actx.destination); o.start(t); o.stop(t+0.6);
+    // 2) 노이즈 버스트 — 로우패스 컷오프를 떨궈 둔탁하게(쉬익→펑)
+    const n=actx.sampleRate*0.5, buf=actx.createBuffer(1,n,actx.sampleRate), d=buf.getChannelData(0);
+    for(let i=0;i<n;i++) d[i]=(Math.random()*2-1)*Math.pow(1-i/n,2.2);
+    const src=actx.createBufferSource(); src.buffer=buf;
+    const f=actx.createBiquadFilter(); f.type="lowpass";
+    f.frequency.setValueAtTime(2000,t); f.frequency.exponentialRampToValueAtTime(230,t+0.42);
+    const ng=actx.createGain(); ng.gain.setValueAtTime(0.55,t); ng.gain.exponentialRampToValueAtTime(0.0001,t+0.5);
+    src.connect(f); f.connect(ng); ng.connect(actx.destination); src.start(t); src.stop(t+0.5);
+  }catch(e){}
 }
-const sOk=()=>{tone(880,.07,"triangle",.16);setTimeout(()=>tone(1240,.08,"triangle",.14),55);};
-const sBad=()=>tone(140,.25,"sawtooth",.2);
-const sCast=()=>tone(360,.06,"sine",.09);
-G.onBoom=boom; G.onCast=sCast; G.onHit=(ok)=>ok?sOk():sBad();
+// 사운드는 '사용자 장판(기다란 빔)이 터질 때'만 — 그 외 효과음(락온/진입/대쉬/물약/보스 원형장판)은 무음
+G.onBoom=boom; G.onCast=null; G.onHit=null;
 
 // ---------- HUD ----------
 const $=s=>document.querySelector(s);
@@ -589,7 +600,9 @@ function syncOrbs(){
       if(k>=ORB_POOL) break;
       const m=orbMeshes[k], spr=orbSprites[k];
       const rad=M.orbRad(col,o), ang=col.ang;
-      const sc=o.entering?THREE.MathUtils.lerp(1,0.5,Math.min(o.enterT/M.ENTER_DELAY,1)):1;
+      // 대기(텀) 동안은 원래 크기 유지, 빨려들어가는 동안만 줄어듦
+      const suckS=o.entering?Math.max(0,(o.enterT-M.ENTER_DELAY)/M.SUCK_TIME):0;
+      const sc=o.entering?THREE.MathUtils.lerp(1,0.5,Math.min(suckS,1)):1;
       const x=Math.cos(ang)*rad, z=Math.sin(ang)*rad, y=M.ORB_R+0.25;
       m.visible=true; m.position.set(x,y,z); m.scale.setScalar(sc);
       m.material.emissive.set(COL[o.cidx].rgb); m.material.color.set(COL[o.cidx].rgb).multiplyScalar(0.2);
@@ -657,7 +670,7 @@ for(let i=0;i<AOE_POOL;i++){
   scene.add(grp); aoeVis.push({grp,warn,fill,edge});
 }
 function takeHit(){
-  hp=Math.max(0, hp-AOE_DMG); sBad();
+  hp=Math.max(0, hp-AOE_DMG); // 피격음 없음(장판 폭발음만 사용)
   if(hp<=0) endGame('전투 불능','체력이 모두 소진되었습니다.');
 }
 function updateAoe(dt){
@@ -665,13 +678,13 @@ function updateAoe(dt){
     aoeTimer-=dt;
     if(aoeTimer<=0 && aoes.length<AOE_POOL){
       aoes.push({x:G.player.x, z:G.player.z, t:0, hit:false});
-      aoeTimer=2.0+Math.random()*2.4; tone(300,0.07,'sine',0.07);
+      aoeTimer=2.0+Math.random()*2.4; // 경고음 없음
     }
   }
   for(const a of aoes){
     a.t+=dt;
     if(!a.hit && a.t>=AOE_ARM){
-      a.hit=true; boom();
+      a.hit=true; // 보스 원형장판 폭발음 없음(사용자 장판 폭발음만)
       const d=Math.hypot(G.player.x-a.x, G.player.z-a.z);
       if(d<=AOE_R && G.running) takeHit(); // 폭발 시점에 장판 안이면 피격
     }
@@ -707,8 +720,7 @@ const potEls=[...document.querySelectorAll('#potions .potion')];
 function usePotion(i){
   if(!G.running || potionCd[i]>0 || hp>=100) return;
   hp=Math.min(100, hp+POTIONS[i].heal);
-  potionCd[i]=POTION_CD;
-  tone(740,0.09,'triangle',0.13); setTimeout(()=>tone(1010,0.08,'triangle',0.1),60);
+  potionCd[i]=POTION_CD; // 물약 사용음 없음
 }
 function updatePotions(dt){
   for(let i=0;i<3;i++){
@@ -767,7 +779,7 @@ function tryDash(){
   heroFace=Math.atan2(dashDirX,dashDirZ);
   // 시작 충격파 + 잔상 즉시 시작
   dashBurstT=0; dashBurstX=G.player.x; dashBurstZ=G.player.z; dashBurst.visible=true;
-  tone(520,0.14,'sawtooth',0.13); // 대쉬 효과음
+  // 대쉬 효과음 없음(장판 폭발음만)
 }
 function applyMovement(dt){
   if(dashCooldown>0) dashCooldown-=dt;

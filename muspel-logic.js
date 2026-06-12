@@ -27,7 +27,8 @@ window.MUSPEL = (function(){
   // ---- 게임 상수 (2D에서 그대로) ----
   const DOUBLE_CLOCKS=new Set([1,4,7,10]);
   const COMMIT=[3,5,7];     // 1·2·3번 구슬 진입 누적 폭발 횟수
-  const ENTER_DELAY=1.5;    // 색 확정(임계 폭발 도달) 후 구슬이 사라지기까지 지연(초)
+  const ENTER_DELAY=1.5;    // 색 확정(임계 폭발 도달) 후 보스로 빨려들어가기 전 '대기(텀)' 시간(초)
+  const SUCK_TIME=0.4;      // 텀이 끝난 뒤 실제로 보스에 빨려들어가는 연출 시간(초)
   const ARM_TIME=3.0;       // 장판 생성→폭발 주기 = 전체 속도
   const LOCK_FRAC=0.85;     // 장판이 캐릭터에서 분리·고정되는 충전 비율
   const BEAM_TOL=0.22;      // 장판 자석 정렬 허용각
@@ -53,7 +54,11 @@ window.MUSPEL = (function(){
   const spawnRadFor=tr=>ARRIVAL+(ARENA_R*0.97-ARRIVAL)*((tr+1)/3);
   function armFrac(){ return G.beam? clamp(G.beam.t/ARM_TIME,0,1):0; }
   function orbRad(col,orb){
-    if(orb.entering) return lerp(ARRIVAL, BOSS_R*0.25, clamp(orb.enterT/ENTER_DELAY,0,1));
+    if(orb.entering){
+      if(orb.enterT < ENTER_DELAY) return ARRIVAL;                              // 텀: 앞(보스 코앞)에서 대기
+      const s=clamp((orb.enterT-ENTER_DELAY)/SUCK_TIME,0,1);                    // 그 뒤 빨려들어감
+      return lerp(ARRIVAL, BOSS_R*0.25, s);
+    }
     const eff=col.exp+armFrac();
     return lerp(spawnRadFor(orb.tr), ARRIVAL, clamp(eff/COMMIT[orb.tr],0,1));
   }
@@ -130,11 +135,22 @@ window.MUSPEL = (function(){
   // ---- 폭발 / 진입 ----
   function explode(){
     const b=G.beam;
-    let tgt=null,best=BEAM_TOL;
-    for(const col of G.cols){ if(!col.alive)continue; const d=Math.abs(angDiff(col.ang,b.ang)); if(d<=best){best=d;tgt=col;} }
-    if(tgt){ // 직선이 지나는 '한 줄' 전체(진입 중 아닌 구슬)만 빨→초→파 한 칸 변경
-      tgt.orbs.forEach(o=>{ if(!o.committed && !o.entering) o.cidx=(o.cidx+1)%3; });
+    const reach=BEAM_W/2+ORB_R; // 닿음 판정 거리: 빔 중심선으로부터 (폭/2 + 구슬 반지름)
+    // 줄(열)별로 '장판 범위에 닿은' 구슬을 모은 뒤, 한 번에 1줄만 변경
+    let target=null;
+    for(const col of G.cols){ if(!col.alive)continue;
+      const touched=[];
+      for(const o of col.orbs){ if(o.committed||o.entering)continue;
+        const perp=Math.abs(orbRad(col,o)*Math.sin(angDiff(col.ang,b.ang))); // 빔 중심선까지 수직거리
+        if(perp<=reach) touched.push(o);
+      }
+      if(!touched.length) continue;
+      const adiff=Math.abs(angDiff(col.ang,b.ang));
+      // 두 줄 동시 변경 금지: 닿은 구슬이 더 많은 줄 우선, 동수면 각도가 더 가까운 줄
+      if(!target || touched.length>target.touched.length ||
+         (touched.length===target.touched.length && adiff<target.adiff)) target={col,touched,adiff};
     }
+    if(target) target.touched.forEach(o=>{ o.cidx=(o.cidx+1)%3; }); // 닿은 구슬만 빨→초→파 한 칸
     G.fx.push({type:"boom",ang:b.ang,len:ARENA_R,t:0});
     // 폭발 누적 → 임계 도달 구슬은 '진입 시작'(색 고정, 1초 뒤 실제 진입)
     for(const col of G.cols){ if(!col.alive)continue; col.exp++;
@@ -181,9 +197,7 @@ window.MUSPEL = (function(){
       const b=G.beam;
       b.t+=dt;
       if(!b.locked){
-        let bb=BEAM_TOL, snap=null;
-        for(const col of G.cols){ if(!col.alive)continue; const dd=Math.abs(angDiff(col.ang,pa)); if(dd<bb){bb=dd;snap=col.ang;} }
-        b.ang=(snap!==null)?snap:pa;
+        b.ang=pa; // 자동 타게팅(스냅) 제거 — 캐릭터가 보스 기준 향한 실제 방향 그대로 조준
         if(b.t>=LOCK_FRAC*ARM_TIME){ b.locked=true; if(G.onCast)G.onCast(); }
       }
       if(b.t>=ARM_TIME) explode();
@@ -191,7 +205,7 @@ window.MUSPEL = (function(){
 
     // 진입 중 구슬: 보스로 빨려들어가고 ENTER_DELAY 후 commit
     for(const col of G.cols){ if(!col.alive)continue;
-      for(const o of col.orbs){ if(o.entering && !o.committed){ o.enterT+=dt; if(o.enterT>=ENTER_DELAY) commitOrb(col,o); } }
+      for(const o of col.orbs){ if(o.entering && !o.committed){ o.enterT+=dt; if(o.enterT>=ENTER_DELAY+SUCK_TIME) commitOrb(col,o); } }
       col.orbs=col.orbs.filter(o=>!o.committed);
       if(col.orbs.length===0) col.alive=false;
     }
@@ -209,7 +223,7 @@ window.MUSPEL = (function(){
   return {
     G, COL, keys,
     ARENA_R, BOSS_R, RING_R, ARRIVAL, ORB_R, PLAYER_R, BEAM_W, MOVE_SPEED,
-    COMMIT, ENTER_DELAY, ARM_TIME, LOCK_FRAC, BEAM_TOL, COL_OFFSET, DOUBLE_CLOCKS,
+    COMMIT, ENTER_DELAY, SUCK_TIME, ARM_TIME, LOCK_FRAC, BEAM_TOL, COL_OFFSET, DOUBLE_CLOCKS,
     clockDirXZ, clockAngle, angDiff, orbRad, update, newRings, spawnLane,
     placePlayerAtClock, playerAngle, reset, startRound, laneCount, laneSolvable,
   };
